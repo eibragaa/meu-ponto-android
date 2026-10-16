@@ -23,6 +23,9 @@ interface ReceiptDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(receipts: List<Receipt>)
 
+    @Query("UPDATE receipts SET workDate = :workDate, workTime = :workTime WHERE id = :id")
+    suspend fun updateDateAndTime(id: Long, workDate: String, workTime: String)
+
     @Query("DELETE FROM receipts WHERE id = :id")
     suspend fun delete(id: Long)
 }

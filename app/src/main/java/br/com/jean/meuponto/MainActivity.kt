@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.DarkMode
@@ -118,6 +119,7 @@ import java.io.File
 import java.io.BufferedOutputStream
 import java.io.BufferedInputStream
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipEntry
@@ -144,6 +146,40 @@ private val filters = listOf(
     FilterOption("today", "Hoje"),
     FilterOption("time", "Com horário")
 )
+
+private val groupModes = listOf(
+    FilterOption("none", "Sem agrupar"),
+    FilterOption("day", "Dia"),
+    FilterOption("week", "Semana")
+)
+
+private data class ReceiptGroup(val title: String, val receipts: List<Receipt>)
+
+private fun groupReceipts(receipts: List<Receipt>, mode: String): List<ReceiptGroup> {
+    if (mode == "none") return listOf(ReceiptGroup("", receipts))
+    return receipts.groupBy { receipt ->
+        when (mode) {
+            "day" -> receipt.workDate
+            "week" -> weekLabel(receipt.workDate)
+            else -> ""
+        }
+    }.map { (title, items) -> ReceiptGroup(title, items) }
+}
+
+private fun weekLabel(workDate: String): String {
+    val parsed = runCatching {
+        SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).apply { isLenient = false }.parse(workDate)
+    }.getOrNull() ?: return "Data a revisar"
+    val start = Calendar.getInstance(Locale("pt", "BR")).apply {
+        time = parsed
+        firstDayOfWeek = Calendar.MONDAY
+        minimalDaysInFirstWeek = 4
+        set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+    }
+    val end = (start.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 6) }
+    val formatter = SimpleDateFormat("dd/MM", Locale("pt", "BR"))
+    return "${formatter.format(start.time)} – ${formatter.format(end.time)}"
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -192,8 +228,10 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val snackbarHostState = remember { SnackbarHostState() }
     var query by rememberSaveable { mutableStateOf("") }
     var selectedFilter by rememberSaveable { mutableStateOf("all") }
+    var selectedGroupMode by rememberSaveable { mutableStateOf("none") }
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
+    var receiptBeingEdited by remember { mutableStateOf<Receipt?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
     var isBackupProcessing by remember { mutableStateOf(false) }
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
@@ -210,6 +248,9 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             "time" -> receipts.filter { it.workTime.isNotBlank() }
             else -> receipts
         }
+    }
+    val groupedReceipts = remember(visibleReceipts, selectedGroupMode) {
+        groupReceipts(visibleReceipts, selectedGroupMode)
     }
 
     fun showMessage(message: String) {
@@ -355,6 +396,34 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 }
             }
             item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Agrupar", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(10.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(groupModes) { option ->
+                            FilterChip(
+                                selected = selectedGroupMode == option.key,
+                                onClick = { selectedGroupMode = option.key },
+                                label = { Text(option.label) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = selectedGroupMode == option.key,
+                                    borderColor = MaterialTheme.colorScheme.outline,
+                                    selectedBorderColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            item {
                 SectionHeader(
                     title = if (query.isBlank()) "Seus comprovantes" else "Resultados",
                     count = visibleReceipts.size,
@@ -375,20 +444,28 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             if (visibleReceipts.isEmpty()) {
                 item { EmptyState(onAdd = { showAddSheet = true }, isSearch = query.isNotBlank()) }
             } else {
-                items(visibleReceipts, key = { it.id }) { receipt ->
-                    ReceiptCard(
-                        receipt = receipt,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = receipt.id in selectedReceiptIds,
-                        onToggleSelection = {
-                            selectedReceiptIds = if (receipt.id in selectedReceiptIds) {
-                                selectedReceiptIds - receipt.id
-                            } else {
-                                selectedReceiptIds + receipt.id
-                            }
-                        },
-                        onShare = { shareAsPdf(context, listOf(receipt)) }
-                    )
+                groupedReceipts.forEachIndexed { groupIndex, group ->
+                    if (selectedGroupMode != "none") {
+                        item(key = "group-$groupIndex-${group.title}") {
+                            GroupHeader(group.title)
+                        }
+                    }
+                    items(group.receipts, key = { it.id }) { receipt ->
+                        ReceiptCard(
+                            receipt = receipt,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = receipt.id in selectedReceiptIds,
+                            onToggleSelection = {
+                                selectedReceiptIds = if (receipt.id in selectedReceiptIds) {
+                                    selectedReceiptIds - receipt.id
+                                } else {
+                                    selectedReceiptIds + receipt.id
+                                }
+                            },
+                            onEdit = { receiptBeingEdited = receipt },
+                            onShare = { shareAsPdf(context, listOf(receipt)) }
+                        )
+                    }
                 }
             }
             item { TrustFooter() }
@@ -410,6 +487,19 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 createBackupLauncher.launch("meu-ponto-backup-${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.zip")
             },
             onRestoreBackup = { restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
+        )
+    }
+    receiptBeingEdited?.let { receipt ->
+        EditReceiptSheet(
+            receipt = receipt,
+            onDismiss = { receiptBeingEdited = null },
+            onSave = { workDate, workTime ->
+                scope.launch {
+                    dao.updateDateAndTime(receipt.id, workDate, workTime)
+                    receiptBeingEdited = null
+                    showMessage("Comprovante atualizado.")
+                }
+            }
         )
     }
 }
@@ -520,11 +610,31 @@ private fun SectionHeader(
 }
 
 @Composable
+private fun GroupHeader(title: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(10.dp)) {
+            Text(
+                title,
+                Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = .35f)))
+    }
+}
+
+@Composable
 private fun ReceiptCard(
     receipt: Receipt,
     isSelectionMode: Boolean,
     isSelected: Boolean,
     onToggleSelection: () -> Unit,
+    onEdit: () -> Unit,
     onShare: () -> Unit
 ) {
     Card(
@@ -544,6 +654,7 @@ private fun ReceiptCard(
             if (isSelectionMode) {
                 androidx.compose.material3.Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
             } else {
+                IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, contentDescription = "Editar data e horário", tint = MaterialTheme.colorScheme.primary) }
                 IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = MaterialTheme.colorScheme.primary) }
             }
         }
@@ -656,6 +767,64 @@ private fun BackupSheet(
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Entendi", color = MaterialTheme.colorScheme.primary) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditReceiptSheet(
+    receipt: Receipt,
+    onDismiss: () -> Unit,
+    onSave: (workDate: String, workTime: String) -> Unit
+) {
+    var workDate by remember(receipt.id) { mutableStateOf(receipt.workDate) }
+    var workTime by remember(receipt.id) { mutableStateOf(receipt.workTime) }
+    val dateValid = Regex("\\d{2}/\\d{2}/\\d{4}").matches(workDate.trim())
+    val timeValid = workTime.isBlank() || Regex("([01]?\\d|2[0-3]):[0-5]\\d").matches(workTime.trim())
+
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
+        Column(
+            Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Revisar comprovante", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("Confirme o que o OCR identificou ou corrija os campos antes de arquivar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = workDate,
+                onValueChange = { workDate = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Data") },
+                placeholder = { Text("dd/mm/aaaa") },
+                isError = workDate.isNotBlank() && !dateValid,
+                supportingText = { if (workDate.isNotBlank() && !dateValid) Text("Use o formato dd/mm/aaaa") }
+            )
+            OutlinedTextField(
+                value = workTime,
+                onValueChange = { workTime = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Horário (opcional)") },
+                placeholder = { Text("hh:mm") },
+                isError = !timeValid,
+                supportingText = {
+                    if (!timeValid) Text("Use o formato hh:mm") else Text("Se não houver horário no comprovante, deixe em branco.")
+                }
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onDismiss) { Text("Cancelar") }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { onSave(workDate.trim(), workTime.trim()) },
+                    enabled = dateValid && timeValid,
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Outlined.TaskAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Confirmar e salvar")
+                }
+            }
         }
     }
 }
