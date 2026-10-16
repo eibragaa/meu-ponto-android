@@ -1,5 +1,6 @@
 package br.com.jean.meuponto
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -9,6 +10,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -96,6 +98,9 @@ import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.data.ReceiptDao
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
@@ -146,7 +151,6 @@ private fun MeuPontoApp() {
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
-    var cameraFile by remember { mutableStateOf<File?>(null) }
 
     val receipts by (if (query.isBlank()) dao.observeAll() else dao.search(query))
         .collectAsState(initial = emptyList())
@@ -165,56 +169,63 @@ private fun MeuPontoApp() {
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
 
-    fun processFile(file: File) {
+    fun processUri(uri: Uri) {
         scope.launch {
             isProcessing = true
             try {
-                val savedFile = withContext(Dispatchers.IO) { copyFileToPrivateStorage(context, file) }
+                val savedFile = withContext(Dispatchers.IO) { copyToPrivateStorage(context, uri) }
                 showMessage(recognizeAndSave(context, dao, savedFile))
             } catch (error: Exception) {
                 showMessage("Não foi possível ler o comprovante. Tente novamente.")
             } finally {
                 isProcessing = false
-                file.delete()
             }
         }
     }
 
     val importReceipt = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch {
-                isProcessing = true
-                try {
-                    val savedFile = withContext(Dispatchers.IO) { copyToPrivateStorage(context, uri) }
-                    showMessage(recognizeAndSave(context, dao, savedFile))
-                } catch (error: Exception) {
-                    showMessage("Não foi possível importar este arquivo. Tente novamente.")
-                } finally {
-                    isProcessing = false
-                }
+        if (uri != null) processUri(uri)
+    }
+
+    val scannerOptions = remember {
+        GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(1)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+    }
+    val documentScanner = remember { GmsDocumentScanning.getClient(scannerOptions) }
+
+    val scannerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            val imageUri = scanResult?.pages?.firstOrNull()?.imageUri
+            if (imageUri != null) {
+                processUri(imageUri)
+            } else {
+                showMessage("Não foi possível preparar o comprovante digitalizado.")
             }
+        } else if (result.resultCode != Activity.RESULT_CANCELED) {
+            showMessage("Não foi possível concluir a digitalização.")
         }
     }
 
-    val captureReceipt = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        val file = cameraFile
-        cameraFile = null
-        if (success && file != null) processFile(file) else file?.delete()
-    }
-
-    fun launchCamera() {
-        try {
-            val file = createCameraFile(context)
-            cameraFile = file
-            captureReceipt.launch(FileProvider.getUriForFile(context, "${context.packageName}.provider", file))
-        } catch (error: Exception) {
-            cameraFile = null
-            showMessage("Não foi possível abrir a câmera. Verifique a permissão e tente novamente.")
+    fun startScanner() {
+        val activity = context as? Activity
+        if (activity == null) {
+            showMessage("Não foi possível iniciar o scanner neste dispositivo.")
+            return
         }
-    }
-
-    fun startCamera() {
-        launchCamera()
+        documentScanner.getStartScanIntent(activity)
+            .addOnSuccessListener { intentSender ->
+                scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener {
+                showMessage("Scanner indisponível. Você ainda pode importar pela galeria.")
+            }
     }
 
     Scaffold(
@@ -281,7 +292,7 @@ private fun MeuPontoApp() {
     if (showAddSheet) {
         AddReceiptSheet(
             onDismiss = { showAddSheet = false },
-            onCamera = { showAddSheet = false; startCamera() },
+            onCamera = { showAddSheet = false; startScanner() },
             onGallery = { showAddSheet = false; importReceipt.launch(arrayOf("image/*")) }
         )
     }
@@ -499,18 +510,6 @@ private fun copyToPrivateStorage(context: Context, uri: Uri): File {
     val file = File(dir, "comprovante_${System.currentTimeMillis()}.jpg")
     context.contentResolver.openInputStream(uri).use { input -> file.outputStream().use { output -> input?.copyTo(output) ?: error("Arquivo vazio") } }
     return file
-}
-
-private fun copyFileToPrivateStorage(context: Context, source: File): File {
-    val dir = File(context.filesDir, "receipts").apply { mkdirs() }
-    val file = File(dir, "comprovante_${System.currentTimeMillis()}.jpg")
-    source.inputStream().use { input -> file.outputStream().use { output -> input.copyTo(output) } }
-    return file
-}
-
-private fun createCameraFile(context: Context): File {
-    val directory = File(context.cacheDir, "camera").apply { mkdirs() }
-    return File(directory, "captura_${System.currentTimeMillis()}.jpg")
 }
 
 private suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: File): String {

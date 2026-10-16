@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 2
-        versionName = "0.2.2"
+        versionName = "0.2.3"
     }
     buildFeatures { compose = true }
 }
@@ -35,6 +35,7 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.core:core:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")

@@ -5,15 +5,16 @@ Aplicativo Android nativo para arquivar, pesquisar e compartilhar comprovantes d
 ## Stack
 - Kotlin + Jetpack Compose
 - Room para metadados locais
+- ML Kit Document Scanner para captura automática, recorte e correção de documentos
 - ML Kit Text Recognition para OCR no aparelho
 - GitHub Actions para compilar APK e publicar Releases por tag `v*`
 
 ## Estado atual
-O app agora tem uma interface premium com identidade própria, captura pela câmera, importação da galeria, OCR local, persistência em Room, busca, filtros, miniaturas e compartilhamento em PDF. Ainda não é uma versão pronta para uso trabalhista: OCR de data/horário exige revisão manual e o backup do Drive ainda está em desenvolvimento.
+O app agora tem uma interface premium com identidade própria, scanner de documentos com captura automática, detecção de bordas, correção de perspectiva, filtros, importação da galeria, OCR local, persistência em Room, busca, filtros, miniaturas e compartilhamento em PDF. O scanner funciona no dispositivo pelo Google Play Services e não exige que o Meu Ponto peça permissão direta da câmera. Ainda não é uma versão pronta para uso trabalhista: OCR de data/horário exige revisão manual e o backup do Drive ainda está em desenvolvimento.
 
 Ainda precisam ser concluídos e testados antes de chamar de MVP confiável:
 - Implementação completa de backup incremental no Google Drive com OAuth, restauração, verificação de integridade e política de conflitos.
-- Testes automatizados e validação em aparelho físico.
+- Testes automatizados, validação em aparelho físico e cobertura do fluxo de edição do scanner.
 - Ajustes de PDF para imagens grandes, rotação e comprovantes multipágina.
 - Assinatura de release e proteção da chave de assinatura; o workflow atual publica APK debug para facilitar o primeiro teste.
 
