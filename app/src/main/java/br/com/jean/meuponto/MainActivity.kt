@@ -1,6 +1,8 @@
 package br.com.jean.meuponto
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
@@ -79,6 +81,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -91,6 +94,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.data.ReceiptDao
@@ -201,10 +205,27 @@ private fun MeuPontoApp() {
         if (success && file != null) processFile(file) else file?.delete()
     }
 
+    fun launchCamera() {
+        try {
+            val file = createCameraFile(context)
+            cameraFile = file
+            captureReceipt.launch(FileProvider.getUriForFile(context, "${context.packageName}.provider", file))
+        } catch (error: Exception) {
+            cameraFile = null
+            showMessage("Não foi possível abrir a câmera. Verifique a permissão e tente novamente.")
+        }
+    }
+
+    val requestCameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) launchCamera() else showMessage("Permissão da câmera recusada. Você pode usar a galeria.")
+    }
+
     fun startCamera() {
-        val file = createCameraFile(context)
-        cameraFile = file
-        captureReceipt.launch(FileProvider.getUriForFile(context, "${context.packageName}.provider", file))
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            launchCamera()
+        } else {
+            requestCameraPermission.launch(Manifest.permission.CAMERA)
+        }
     }
 
     Scaffold(
@@ -295,8 +316,8 @@ private fun Header(onBackupClick: () -> Unit) {
 
 @Composable
 private fun SummaryCard(total: Int, isProcessing: Boolean) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Ink)) {
-        Box(Modifier.fillMaxWidth().padding(22.dp)) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Ink, TealDark))).padding(22.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
