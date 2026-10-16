@@ -1,8 +1,6 @@
 package br.com.jean.meuponto
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
@@ -94,7 +92,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import androidx.core.content.ContextCompat
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.data.ReceiptDao
@@ -216,16 +213,8 @@ private fun MeuPontoApp() {
         }
     }
 
-    val requestCameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) launchCamera() else showMessage("Permissão da câmera recusada. Você pode usar a galeria.")
-    }
-
     fun startCamera() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            launchCamera()
-        } else {
-            requestCameraPermission.launch(Manifest.permission.CAMERA)
-        }
+        launchCamera()
     }
 
     Scaffold(
