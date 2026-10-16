@@ -9,14 +9,17 @@ Aplicativo Android nativo para arquivar, pesquisar e compartilhar comprovantes d
 - GitHub Actions para compilar APK e publicar Releases por tag `v*`
 
 ## Estado atual
-Esta é uma base inicial de desenvolvimento, não uma versão pronta para uso trabalhista. O projeto já compila uma APK debug e inclui interface, importação de imagem, OCR inicial, persistência local e fluxo de compartilhamento em PDF. OCR de data/horário exige revisão manual.
+O app agora tem uma interface premium com identidade própria, captura pela câmera, importação da galeria, OCR local, persistência em Room, busca, filtros, miniaturas e compartilhamento em PDF. Ainda não é uma versão pronta para uso trabalhista: OCR de data/horário exige revisão manual e o backup do Drive ainda está em desenvolvimento.
 
 Ainda precisam ser concluídos e testados antes de chamar de MVP confiável:
-- Captura direta pela câmera (por enquanto, a importação seleciona imagem/arquivo).
 - Implementação completa de backup incremental no Google Drive com OAuth, restauração, verificação de integridade e política de conflitos.
 - Testes automatizados e validação em aparelho físico.
 - Ajustes de PDF para imagens grandes, rotação e comprovantes multipágina.
 - Assinatura de release e proteção da chave de assinatura; o workflow atual publica APK debug para facilitar o primeiro teste.
+
+## Identidade visual
+
+O sistema de marca, logotipo, cores, tipografia, voz e regras de acessibilidade está documentado em [`docs/brand-book.md`](docs/brand-book.md). O app usa a assinatura visual “Clareza para sua jornada”, com Ink, Teal, Mint, Coral e fundo Cream.
 
 ## Desenvolvimento local
 1. Instale/abra o Android Studio com JDK 17.
