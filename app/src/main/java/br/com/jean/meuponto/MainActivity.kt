@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -597,13 +598,33 @@ private fun shareAsPdf(context: Context, receipts: List<Receipt>) {
     if (receipts.isEmpty()) return
     try {
         val pdf = PdfDocument()
-        receipts.forEachIndexed { index, receipt ->
+        if (receipts.size == 1) {
+            val receipt = receipts.first()
             val bitmap = decodePdfBitmap(receipt.imagePath) ?: error("Imagem indisponível")
-            val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width.coerceAtLeast(1), bitmap.height.coerceAtLeast(1), index + 1).create()
+            val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width.coerceAtLeast(1), bitmap.height.coerceAtLeast(1), 1).create()
             val page = pdf.startPage(pageInfo)
             page.canvas.drawBitmap(bitmap, 0f, 0f, null)
             pdf.finishPage(page)
             bitmap.recycle()
+        } else {
+            val pageWidth = 1200f
+            val pageHeight = 1697f
+            val margin = 36f
+            val gap = 24f
+            val slotHeight = (pageHeight - (margin * 2) - gap) / 2f
+            receipts.chunked(2).forEachIndexed { pageIndex, pageReceipts ->
+                val pageInfo = PdfDocument.PageInfo.Builder(pageWidth.toInt(), pageHeight.toInt(), pageIndex + 1).create()
+                val page = pdf.startPage(pageInfo)
+                page.canvas.drawColor(android.graphics.Color.WHITE)
+                pageReceipts.forEachIndexed { slotIndex, receipt ->
+                    val bitmap = decodePdfBitmap(receipt.imagePath) ?: error("Imagem indisponível")
+                    val top = margin + (slotIndex * (slotHeight + gap))
+                    val target = fitBitmapRect(bitmap, margin, top, pageWidth - margin, top + slotHeight)
+                    page.canvas.drawBitmap(bitmap, null, target, null)
+                    bitmap.recycle()
+                }
+                pdf.finishPage(page)
+            }
         }
         val outDir = File(context.cacheDir, "shared").apply { mkdirs() }
         val fileName = if (receipts.size == 1) {
@@ -628,6 +649,15 @@ private fun shareAsPdf(context: Context, receipts: List<Receipt>) {
     } catch (error: Exception) {
         Toast.makeText(context, "Falha ao gerar PDF", Toast.LENGTH_LONG).show()
     }
+}
+
+private fun fitBitmapRect(bitmap: Bitmap, left: Float, top: Float, right: Float, bottom: Float): RectF {
+    val scale = minOf((right - left) / bitmap.width, (bottom - top) / bitmap.height)
+    val width = bitmap.width * scale
+    val height = bitmap.height * scale
+    val offsetX = left + ((right - left) - width) / 2f
+    val offsetY = top + ((bottom - top) - height) / 2f
+    return RectF(offsetX, offsetY, offsetX + width, offsetY + height)
 }
 
 private fun decodePdfBitmap(path: String): Bitmap? {
