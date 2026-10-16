@@ -369,7 +369,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item { Header(isDarkTheme = isDarkTheme, onThemeClick = onToggleTheme, onBackupClick = { showBackupSheet = true }) }
-            item { SummaryCard(total = receipts.size, isProcessing = isProcessing) }
+            item { SummaryCard(total = receipts.size, isProcessing = isProcessing, isDarkTheme = isDarkTheme) }
             item { SearchField(query = query, onQueryChange = { query = it }) }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -523,34 +523,43 @@ private fun Header(isDarkTheme: Boolean, onThemeClick: () -> Unit, onBackupClick
 }
 
 @Composable
-private fun SummaryCard(total: Int, isProcessing: Boolean) {
+private fun SummaryCard(total: Int, isProcessing: Boolean, isDarkTheme: Boolean) {
+    val heroGradient = if (isDarkTheme) {
+        listOf(Color(0xFF14242C), Color(0xFF0D4C47))
+    } else {
+        listOf(Ink, TealDark)
+    }
+    val heroText = if (isDarkTheme) Color(0xFFF1F8F5) else Color.White
+    val heroMuted = if (isDarkTheme) Color(0xFFB8CCC7) else Color.White.copy(alpha = .70f)
+    val heroNumber = if (isDarkTheme) Color(0xFF8BE3D2) else Mint
+    val heroBadge = if (isDarkTheme) Color(0xFF103A38) else TealDark.copy(alpha = .75f)
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.onBackground, MaterialTheme.colorScheme.primary))).padding(22.dp)) {
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(heroGradient)).padding(22.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
                             if (isProcessing) "Organizando seu comprovante" else if (total == 0) "Seu arquivo começa aqui" else "Seu arquivo está em dia",
-                            color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold
+                            color = heroText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
                             if (isProcessing) "Lendo data e horário com OCR local…" else "Tudo que importa, em um só lugar.",
-                            color = Color.White.copy(alpha = .70f), style = MaterialTheme.typography.bodyMedium
+                            color = heroMuted, style = MaterialTheme.typography.bodyMedium
                         )
                     }
                     Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Coral, modifier = Modifier.size(28.dp))
                 }
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(total.toString(), color = Mint, fontSize = 48.sp, fontWeight = FontWeight.Bold, lineHeight = 48.sp)
+                    Text(total.toString(), color = heroNumber, fontSize = 48.sp, fontWeight = FontWeight.Bold, lineHeight = 48.sp)
                     Spacer(Modifier.width(10.dp))
-                    Text("comprovante${if (total == 1) "" else "s"}\nsalvo${if (total == 1) "" else "s"}", color = Color.White.copy(alpha = .72f), style = MaterialTheme.typography.labelLarge)
+                    Text("comprovante${if (total == 1) "" else "s"}\nsalvo${if (total == 1) "" else "s"}", color = heroMuted, style = MaterialTheme.typography.labelLarge)
                 }
-                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = .75f), shape = RoundedCornerShape(12.dp)) {
+                Surface(color = heroBadge, shape = RoundedCornerShape(12.dp)) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = Mint, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Backup exportável • pronto", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                        Text("Backup exportável • pronto", color = heroText, style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
