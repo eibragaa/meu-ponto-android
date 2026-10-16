@@ -40,14 +40,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TaskAlt
@@ -71,6 +73,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,6 +82,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,6 +92,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +100,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.data.ReceiptDao
@@ -109,9 +115,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.BufferedOutputStream
+import java.io.BufferedInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Ink = Color(0xFF112032)
 private val InkSoft = Color(0xFF304052)
@@ -136,13 +149,43 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { MeuPontoTheme { MeuPontoApp() } }
+        setContent {
+            MeuPontoRoot()
+        }
+    }
+}
+
+@Composable
+private fun MeuPontoRoot() {
+    val context = LocalContext.current
+    val preferences = remember { context.getSharedPreferences("meu_ponto_preferences", Context.MODE_PRIVATE) }
+    val systemDark = isSystemInDarkTheme()
+    var darkTheme by rememberSaveable { mutableStateOf(preferences.getBoolean("dark_theme", systemDark)) }
+    val view = LocalView.current
+
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (context as Activity).window
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !darkTheme
+            controller.isAppearanceLightNavigationBars = !darkTheme
+        }
+    }
+
+    MeuPontoTheme(darkTheme = darkTheme) {
+        MeuPontoApp(
+            isDarkTheme = darkTheme,
+            onToggleTheme = {
+                darkTheme = !darkTheme
+                preferences.edit().putBoolean("dark_theme", darkTheme).apply()
+            }
+        )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MeuPontoApp() {
+private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dao = remember { AppDatabase.get(context).receiptDao() }
@@ -152,6 +195,7 @@ private fun MeuPontoApp() {
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
+    var isBackupProcessing by remember { mutableStateOf(false) }
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     var selectedReceiptIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 
@@ -188,6 +232,36 @@ private fun MeuPontoApp() {
 
     val importReceipt = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) processUri(uri)
+    }
+
+    val createBackupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                isBackupProcessing = true
+                val message = runCatching { createBackup(context, dao, uri) }
+                    .fold(
+                        onSuccess = { count -> "Backup criado com $count comprovante${if (count == 1) "" else "s"}." },
+                        onFailure = { "Não foi possível criar o backup." }
+                    )
+                isBackupProcessing = false
+                showMessage(message)
+            }
+        }
+    }
+
+    val restoreBackupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                isBackupProcessing = true
+                val message = runCatching { restoreBackup(context, dao, uri) }
+                    .fold(
+                        onSuccess = { count -> "$count comprovante${if (count == 1) " restaurado" else "s restaurados"}." },
+                        onFailure = { "Não foi possível restaurar esse backup." }
+                    )
+                isBackupProcessing = false
+                showMessage(message)
+            }
+        }
     }
 
     val scannerOptions = remember {
@@ -233,7 +307,7 @@ private fun MeuPontoApp() {
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = Cream,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
@@ -241,7 +315,7 @@ private fun MeuPontoApp() {
                 onClick = { showAddSheet = true },
                 icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                 text = { Text("Adicionar") },
-                containerColor = Ink,
+                containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White,
                 shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.navigationBarsPadding().padding(bottom = 8.dp)
@@ -253,7 +327,7 @@ private fun MeuPontoApp() {
             contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { Header(onBackupClick = { showBackupSheet = true }) }
+            item { Header(isDarkTheme = isDarkTheme, onThemeClick = onToggleTheme, onBackupClick = { showBackupSheet = true }) }
             item { SummaryCard(total = receipts.size, isProcessing = isProcessing) }
             item { SearchField(query = query, onQueryChange = { query = it }) }
             item {
@@ -265,16 +339,16 @@ private fun MeuPontoApp() {
                             label = { Text(option.label) },
                             shape = RoundedCornerShape(12.dp),
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Ink,
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
                                 selectedLabelColor = Color.White,
-                                containerColor = Color.White,
-                                labelColor = InkSoft
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                             ),
                             border = FilterChipDefaults.filterChipBorder(
                                 enabled = true,
                                 selected = selectedFilter == option.key,
-                                borderColor = Line,
-                                selectedBorderColor = Ink
+                                borderColor = MaterialTheme.colorScheme.outline,
+                                selectedBorderColor = MaterialTheme.colorScheme.primary
                             )
                         )
                     }
@@ -328,20 +402,32 @@ private fun MeuPontoApp() {
             onGallery = { showAddSheet = false; importReceipt.launch(arrayOf("image/*")) }
         )
     }
-    if (showBackupSheet) BackupSheet(onDismiss = { showBackupSheet = false })
+    if (showBackupSheet) {
+        BackupSheet(
+            isProcessing = isBackupProcessing,
+            onDismiss = { showBackupSheet = false },
+            onCreateBackup = {
+                createBackupLauncher.launch("meu-ponto-backup-${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.zip")
+            },
+            onRestoreBackup = { restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
+        )
+    }
 }
 
 @Composable
-private fun Header(onBackupClick: () -> Unit) {
+private fun Header(isDarkTheme: Boolean, onThemeClick: () -> Unit, onBackupClick: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         MeuPontoMark(Modifier.size(46.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("Meu Ponto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
-            Text("Clareza para sua jornada", style = MaterialTheme.typography.labelMedium, color = Muted)
+            Text("Meu Ponto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("Clareza para sua jornada", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        IconButton(onClick = onBackupClick, modifier = Modifier.size(42.dp).background(Color.White, CircleShape)) {
-            Icon(Icons.Outlined.CloudOff, contentDescription = "Status do backup", tint = Teal)
+        IconButton(onClick = onThemeClick, modifier = Modifier.size(42.dp).background(MaterialTheme.colorScheme.surface, CircleShape)) {
+            Icon(if (isDarkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, contentDescription = if (isDarkTheme) "Ativar tema claro" else "Ativar tema escuro", tint = MaterialTheme.colorScheme.primary)
+        }
+        IconButton(onClick = onBackupClick, modifier = Modifier.size(42.dp).background(MaterialTheme.colorScheme.surface, CircleShape)) {
+            Icon(Icons.Outlined.CloudOff, contentDescription = "Status do backup", tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -349,7 +435,7 @@ private fun Header(onBackupClick: () -> Unit) {
 @Composable
 private fun SummaryCard(total: Int, isProcessing: Boolean) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Ink, TealDark))).padding(22.dp)) {
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.onBackground, MaterialTheme.colorScheme.primary))).padding(22.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -370,11 +456,11 @@ private fun SummaryCard(total: Int, isProcessing: Boolean) {
                     Spacer(Modifier.width(10.dp))
                     Text("comprovante${if (total == 1) "" else "s"}\nsalvo${if (total == 1) "" else "s"}", color = Color.White.copy(alpha = .72f), style = MaterialTheme.typography.labelLarge)
                 }
-                Surface(color = TealDark.copy(alpha = .75f), shape = RoundedCornerShape(12.dp)) {
+                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = .75f), shape = RoundedCornerShape(12.dp)) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = Mint, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Backup local • Drive em breve", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                        Text("Backup exportável • pronto", color = Color.White, style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
@@ -394,14 +480,14 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         placeholder = { Text("Buscar por data, horário ou texto") },
-        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = Teal) },
+        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
         trailingIcon = { if (query.isNotBlank()) IconButton(onClick = { onQueryChange("") }) { Icon(Icons.Outlined.Close, contentDescription = "Limpar busca") } },
         shape = RoundedCornerShape(18.dp),
         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-            unfocusedContainerColor = Color.White,
-            focusedContainerColor = Color.White,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
             unfocusedBorderColor = Color.Transparent,
-            focusedBorderColor = Teal
+            focusedBorderColor = MaterialTheme.colorScheme.primary
         )
     )
 }
@@ -416,10 +502,10 @@ private fun SectionHeader(
     onExport: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.width(8.dp))
-        Surface(color = Mist, shape = RoundedCornerShape(8.dp)) {
-            Text(count.toString(), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium, color = TealDark)
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp)) {
+            Text(count.toString(), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         }
         Spacer(Modifier.weight(1f))
         if (isSelectionMode) {
@@ -444,21 +530,21 @@ private fun ReceiptCard(
     Card(
         Modifier.fillMaxWidth().clickable(enabled = isSelectionMode, onClick = onToggleSelection),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             ReceiptThumbnail(receipt.imagePath)
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(receipt.workDate, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
-                Text(if (receipt.workTime.isBlank()) "Horário pendente de revisão" else "Horário identificado • ${receipt.workTime}", style = MaterialTheme.typography.bodySmall, color = if (receipt.workTime.isBlank()) Muted else TealDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(File(receipt.imagePath).name, style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(receipt.workDate, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text(if (receipt.workTime.isBlank()) "Horário pendente de revisão" else "Horário identificado • ${receipt.workTime}", style = MaterialTheme.typography.bodySmall, color = if (receipt.workTime.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(File(receipt.imagePath).name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (isSelectionMode) {
                 androidx.compose.material3.Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
             } else {
-                IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = Teal) }
+                IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = MaterialTheme.colorScheme.primary) }
             }
         }
     }
@@ -467,7 +553,7 @@ private fun ReceiptCard(
 @Composable
 private fun ReceiptThumbnail(path: String) {
     val bitmap by produceState<Bitmap?>(initialValue = null, key1 = path) { value = withContext(Dispatchers.IO) { decodePreview(path) } }
-    Box(Modifier.size(68.dp).clip(RoundedCornerShape(16.dp)).background(Mint), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(68.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else MeuPontoMark(Modifier.size(34.dp), compact = true)
     }
@@ -475,13 +561,13 @@ private fun ReceiptThumbnail(path: String) {
 
 @Composable
 private fun EmptyState(onAdd: () -> Unit, isSearch: Boolean) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             MeuPontoMark(Modifier.size(58.dp))
-            Text(if (isSearch) "Nada encontrado" else "Seu arquivo está vazio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
-            Text(if (isSearch) "Tente outra data, horário ou palavra-chave." else "Guarde seu primeiro comprovante e encontre tudo quando precisar.", style = MaterialTheme.typography.bodyMedium, color = Muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(if (isSearch) "Nada encontrado" else "Seu arquivo está vazio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text(if (isSearch) "Tente outra data, horário ou palavra-chave." else "Guarde seu primeiro comprovante e encontre tudo quando precisar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             if (!isSearch) {
-                Button(onClick = onAdd, colors = ButtonDefaults.buttonColors(containerColor = Teal), shape = RoundedCornerShape(14.dp)) {
+                Button(onClick = onAdd, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), shape = RoundedCornerShape(14.dp)) {
                     Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Adicionar comprovante")
@@ -494,19 +580,19 @@ private fun EmptyState(onAdd: () -> Unit, isSearch: Boolean) {
 @Composable
 private fun TrustFooter() {
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.TaskAlt, contentDescription = null, tint = Teal, modifier = Modifier.size(16.dp))
+        Icon(Icons.Outlined.TaskAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
-        Text("Seus arquivos ficam privados neste aparelho", style = MaterialTheme.typography.labelSmall, color = Muted)
+        Text("Seus arquivos ficam privados neste aparelho", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddReceiptSheet(onDismiss: () -> Unit, onCamera: () -> Unit, onGallery: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Cream) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Adicionar comprovante", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Ink)
-            Text("Escolha como deseja guardar este momento.", style = MaterialTheme.typography.bodyMedium, color = Muted)
+            Text("Adicionar comprovante", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("Escolha como deseja guardar este momento.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             SourceOption(Icons.Outlined.CameraAlt, "Usar câmera", "Fotografe agora e deixe o OCR organizar", onCamera)
             SourceOption(Icons.Outlined.FolderOpen, "Escolher da galeria", "Importe uma imagem já salva", onGallery)
@@ -516,54 +602,74 @@ private fun AddReceiptSheet(onDismiss: () -> Unit, onCamera: () -> Unit, onGalle
 
 @Composable
 private fun SourceOption(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
-    Surface(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), color = Color.White) {
+    Surface(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(Mint), contentAlignment = Alignment.Center) { Icon(icon, contentDescription = null, tint = Teal) }
+            Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(Icons.Outlined.ArrowForward, contentDescription = null, tint = Muted)
+            Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BackupSheet(onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Cream) {
+private fun BackupSheet(
+    isProcessing: Boolean,
+    onDismiss: () -> Unit,
+    onCreateBackup: () -> Unit,
+    onRestoreBackup: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(Mint), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = Teal) }
+                Box(Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
                 Spacer(Modifier.width(14.dp))
                 Column {
-                    Text("Backup no Google Drive", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
-                    Text("Próximo passo do produto", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text("Backup no Google Drive", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                    Text("Proteção local e exportação segura", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Seus comprovantes estão seguros neste aparelho. A sincronização com o Drive ainda está em desenvolvimento e será opcional, com login seguro e restauração por conta.", style = MaterialTheme.typography.bodyMedium, color = InkSoft)
-            Surface(color = Mist, shape = RoundedCornerShape(16.dp)) {
+            Text("Crie um backup completo com imagens e dados reconhecidos. No seletor do Android, escolha o Google Drive ou outro local seguro; depois use Restaurar para trazer tudo de volta.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(
+                onClick = onCreateBackup,
+                enabled = !isProcessing,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(Icons.Outlined.CloudOff, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (isProcessing) "Processando…" else "Criar backup")
+            }
+            TextButton(onClick = onRestoreBackup, enabled = !isProcessing, modifier = Modifier.align(Alignment.End)) {
+                Text("Restaurar backup", color = MaterialTheme.colorScheme.primary)
+            }
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Outlined.Info, contentDescription = null, tint = Teal, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(10.dp))
-                    Text("Não colocamos credenciais do Google no aplicativo nem no repositório.", style = MaterialTheme.typography.bodySmall, color = InkSoft)
+                    Text("O arquivo é criado no aparelho e só vai para o local que você escolher. Nenhuma credencial do Google fica no aplicativo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Entendi", color = Teal) }
+            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Entendi", color = MaterialTheme.colorScheme.primary) }
         }
     }
 }
 
 @Composable
 private fun MeuPontoMark(modifier: Modifier, compact: Boolean = false) {
+    val primary = MaterialTheme.colorScheme.primary
     Box(modifier.clip(RoundedCornerShape(if (compact) 11.dp else 15.dp)).background(Coral), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize().padding(if (compact) 7.dp else 10.dp)) {
             val paper = androidx.compose.ui.geometry.Rect(2f, 2f, size.width - 2f, size.height - 2f)
             drawRoundRect(Color.White, topLeft = paper.topLeft, size = paper.size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()))
-            drawLine(Teal, androidx.compose.ui.geometry.Offset(size.width * .28f, size.height * .34f), androidx.compose.ui.geometry.Offset(size.width * .72f, size.height * .34f), strokeWidth = 2.5f)
-            drawLine(Teal, androidx.compose.ui.geometry.Offset(size.width * .28f, size.height * .53f), androidx.compose.ui.geometry.Offset(size.width * .62f, size.height * .53f), strokeWidth = 2.5f)
-            drawCircle(Teal, radius = if (compact) 3.dp.toPx() else 4.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width * .68f, size.height * .73f))
+            drawLine(primary, androidx.compose.ui.geometry.Offset(size.width * .28f, size.height * .34f), androidx.compose.ui.geometry.Offset(size.width * .72f, size.height * .34f), strokeWidth = 2.5f)
+            drawLine(primary, androidx.compose.ui.geometry.Offset(size.width * .28f, size.height * .53f), androidx.compose.ui.geometry.Offset(size.width * .62f, size.height * .53f), strokeWidth = 2.5f)
+            drawCircle(primary, radius = if (compact) 3.dp.toPx() else 4.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width * .68f, size.height * .73f))
         }
     }
 }
@@ -573,6 +679,87 @@ private fun copyToPrivateStorage(context: Context, uri: Uri): File {
     val file = File(dir, "comprovante_${System.currentTimeMillis()}.jpg")
     context.contentResolver.openInputStream(uri).use { input -> file.outputStream().use { output -> input?.copyTo(output) ?: error("Arquivo vazio") } }
     return file
+}
+
+private suspend fun createBackup(context: Context, dao: ReceiptDao, destination: Uri): Int = withContext(Dispatchers.IO) {
+    val receipts = dao.getAll()
+    val manifest = JSONArray()
+    context.contentResolver.openOutputStream(destination)?.use { output ->
+        ZipOutputStream(BufferedOutputStream(output)).use { zip ->
+            receipts.forEach { receipt ->
+                val source = File(receipt.imagePath)
+                if (!source.isFile) return@forEach
+                val imageEntry = "images/${receipt.id}.jpg"
+                zip.putNextEntry(ZipEntry(imageEntry))
+                source.inputStream().use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+                manifest.put(
+                    JSONObject()
+                        .put("id", receipt.id)
+                        .put("capturedAt", receipt.capturedAt)
+                        .put("workDate", receipt.workDate)
+                        .put("workTime", receipt.workTime)
+                        .put("recognizedText", receipt.recognizedText)
+                        .put("imageEntry", imageEntry)
+                )
+            }
+            zip.putNextEntry(ZipEntry("manifest.json"))
+            zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+        }
+    } ?: error("Destino de backup indisponível")
+    manifest.length()
+}
+
+private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: Uri): Int = withContext(Dispatchers.IO) {
+    val restoreDir = File(context.cacheDir, "restore_${System.currentTimeMillis()}").apply { mkdirs() }
+    try {
+        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            ZipInputStream(BufferedInputStream(input)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    val target = File(restoreDir, entry.name)
+                    val rootPath = restoreDir.canonicalPath + File.separator
+                    if (!target.canonicalPath.startsWith(rootPath)) error("Backup inválido")
+                    if (entry.isDirectory) {
+                        target.mkdirs()
+                    } else {
+                        target.parentFile?.mkdirs()
+                        target.outputStream().use { output -> zip.copyTo(output) }
+                    }
+                    zip.closeEntry()
+                }
+            }
+        } ?: error("Arquivo de backup indisponível")
+
+        val manifestFile = File(restoreDir, "manifest.json")
+        if (!manifestFile.isFile) error("Manifesto do backup ausente")
+        val items = JSONArray(manifestFile.readText(Charsets.UTF_8))
+        val destinationDir = File(context.filesDir, "receipts").apply { mkdirs() }
+        val restored = buildList {
+            for (index in 0 until items.length()) {
+                val item = items.getJSONObject(index)
+                val imageSource = File(restoreDir, item.getString("imageEntry"))
+                if (!imageSource.isFile) continue
+                val imageDestination = File(destinationDir, "restored_${item.getLong("id")}_${System.currentTimeMillis()}_$index.jpg")
+                imageSource.copyTo(imageDestination, overwrite = true)
+                add(
+                    Receipt(
+                        id = item.getLong("id"),
+                        capturedAt = item.getLong("capturedAt"),
+                        workDate = item.getString("workDate"),
+                        workTime = item.getString("workTime"),
+                        imagePath = imageDestination.absolutePath,
+                        recognizedText = item.optString("recognizedText")
+                    )
+                )
+            }
+        }
+        dao.insertAll(restored)
+        restored.size
+    } finally {
+        restoreDir.deleteRecursively()
+    }
 }
 
 private suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: File): String {
@@ -683,23 +870,42 @@ private val AppTypography = androidx.compose.material3.Typography(
 )
 
 @Composable
-private fun MeuPontoTheme(content: @Composable () -> Unit) {
+private fun MeuPontoTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = androidx.compose.material3.lightColorScheme(
-            primary = Teal,
-            onPrimary = Color.White,
-            primaryContainer = Mint,
-            onPrimaryContainer = TealDark,
-            secondary = Coral,
-            onSecondary = Ink,
-            background = Cream,
-            onBackground = Ink,
-            surface = Color.White,
-            onSurface = Ink,
-            surfaceVariant = Mist,
-            onSurfaceVariant = InkSoft,
-            outline = Line
-        ),
+        colorScheme = if (darkTheme) {
+            androidx.compose.material3.darkColorScheme(
+                primary = Color(0xFF74D9C6),
+                onPrimary = Color(0xFF00382F),
+                primaryContainer = Color(0xFF075448),
+                onPrimaryContainer = Color(0xFF9AF5E2),
+                secondary = Color(0xFFFFA38F),
+                onSecondary = Color(0xFF4A160D),
+                tertiary = Color(0xFF9BDCCB),
+                background = Color(0xFF0C141A),
+                onBackground = Color(0xFFE8F0ED),
+                surface = Color(0xFF121E25),
+                onSurface = Color(0xFFE8F0ED),
+                surfaceVariant = Color(0xFF203038),
+                onSurfaceVariant = Color(0xFFB6C7C2),
+                outline = Color(0xFF42565D)
+            )
+        } else {
+            androidx.compose.material3.lightColorScheme(
+                primary = Teal,
+                onPrimary = Color.White,
+                primaryContainer = Mint,
+                onPrimaryContainer = TealDark,
+                secondary = Coral,
+                onSecondary = Ink,
+                background = Cream,
+                onBackground = Ink,
+                surface = Color.White,
+                onSurface = Ink,
+                surfaceVariant = Mist,
+                onSurfaceVariant = InkSoft,
+                outline = Line
+            )
+        },
         typography = AppTypography,
         shapes = androidx.compose.material3.Shapes(small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(26.dp)),
         content = content

@@ -10,13 +10,12 @@ Aplicativo Android nativo para arquivar, pesquisar e compartilhar comprovantes d
 - GitHub Actions para compilar APK e publicar Releases por tag `v*`
 
 ## Estado atual
-O app agora tem uma interface premium com identidade própria, scanner de documentos com captura automática, detecção de bordas, correção de perspectiva, filtros, importação da galeria, OCR local, persistência em Room, busca, filtros, miniaturas e exportação de um ou vários comprovantes em PDF. Na exportação em lote, dois comprovantes são organizados por página; a exportação individual continua disponível. O scanner funciona no dispositivo pelo Google Play Services e não exige que o Meu Ponto peça permissão direta da câmera. Ainda não é uma versão pronta para uso trabalhista: OCR de data/horário exige revisão manual e o backup do Drive ainda está em desenvolvimento.
+O app agora tem uma interface premium com identidade própria, tema claro/escuro persistente, scanner de documentos com captura automática, detecção de bordas, correção de perspectiva, filtros, importação da galeria, OCR local, persistência em Room, busca, miniaturas e exportação de um ou vários comprovantes em PDF. Na exportação em lote, dois comprovantes são organizados por página; a exportação individual continua disponível. O scanner funciona no dispositivo pelo Google Play Services e não exige que o Meu Ponto peça permissão direta da câmera. O backup exportável inclui imagens, datas, horários e OCR em um ZIP e pode ser restaurado pelo seletor do Android, inclusive escolhendo o Google Drive como destino.
 
-Ainda precisam ser concluídos e testados antes de chamar de MVP confiável:
-- Implementação completa de backup incremental no Google Drive com OAuth, restauração, verificação de integridade e política de conflitos.
-- Testes automatizados, validação em aparelho físico e cobertura do fluxo de edição do scanner.
-- Ajustes de PDF para imagens grandes, rotação e comprovantes multipágina.
-- Assinatura de release e proteção da chave de assinatura; o workflow atual publica APK debug para facilitar o primeiro teste.
+Limites conhecidos para a distribuição final:
+- A sincronização automática e incremental em segundo plano no Google Drive exige configurar OAuth no Google Cloud, incluindo o cliente Android e o SHA-1/SHA-256 do certificado de assinatura.
+- O OCR de data/horário continua exigindo revisão humana; o app não deve ser tratado como registro trabalhista oficial sem essa conferência.
+- O workflow publica uma build debug para testes. Para atualizações sem desinstalação e distribuição pública, ainda é necessário cadastrar uma chave de release permanente nos Secrets do GitHub.
 
 ## Identidade visual
 
@@ -41,11 +40,11 @@ O APK ficará em `app/build/outputs/apk/debug/app-debug.apk`. O `local.propertie
 Depois de enviar o projeto ao GitHub, crie e envie uma tag, por exemplo:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-O workflow `.github/workflows/android-release.yml` usa o Gradle Wrapper, compila o APK debug, guarda o artefato da execução e anexa `app-debug.apk` ao Release da tag. Não distribua esse APK como versão final sem assinar uma build de release e testar restauração/backup.
+O workflow `.github/workflows/android-release.yml` usa o Gradle Wrapper, compila o APK debug, guarda o artefato da execução e anexa `app-debug.apk` ao Release da tag. O APK é apropriado para testes; antes de distribuir publicamente, configure a chave de release permanente para preservar a assinatura entre versões.
 
 ## Backup no Google Drive
-O backup ainda não está configurado no aplicativo. Para concluí-lo será necessário implementar sincronização/restauração, definir a política de conflitos e configurar OAuth no Google Cloud (cliente Android, SHA-1/SHA-256 do certificado e escopos do Drive). Essas credenciais não devem ser colocadas no repositório.
+O app já exporta e restaura um backup ZIP pelo seletor de documentos do Android. Para usar o Google Drive agora, escolha-o como destino ao criar o arquivo. A sincronização automática, incremental e silenciosa no estilo WhatsApp é uma etapa separada: exige OAuth no Google Cloud (cliente Android, SHA-1/SHA-256 do certificado e escopos do Drive), política de conflitos e Secrets/configuração fora do repositório. Essas credenciais não devem ser colocadas no GitHub.

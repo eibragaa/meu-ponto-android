@@ -2,6 +2,7 @@ package br.com.jean.meuponto.data
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
@@ -13,8 +14,14 @@ interface ReceiptDao {
     @Query("SELECT * FROM receipts WHERE workDate LIKE '%' || :query || '%' OR workTime LIKE '%' || :query || '%' OR recognizedText LIKE '%' || :query || '%' ORDER BY workDate DESC")
     fun search(query: String): Flow<List<Receipt>>
 
-    @Insert
+    @Query("SELECT * FROM receipts ORDER BY capturedAt ASC")
+    suspend fun getAll(): List<Receipt>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(receipt: Receipt): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(receipts: List<Receipt>)
 
     @Query("DELETE FROM receipts WHERE id = :id")
     suspend fun delete(id: Long)

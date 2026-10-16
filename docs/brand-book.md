@@ -60,9 +60,9 @@ Escreva como uma pessoa cuidadosa que ajuda o usuário a recuperar um documento 
 
 - “Seu arquivo está em dia” em vez de “Operação concluída”.
 - “Horário pendente de revisão” em vez de “OCR falhou”.
-- “Backup no Drive em breve” em vez de sugerir que uma sincronização já existe.
+- “Backup exportável” quando o arquivo ZIP pode ser criado pelo seletor do Android; não sugerir sincronização automática quando ela não estiver configurada.
 
-Nunca prometa backup, segurança ou restauração antes que a implementação e os testes existam.
+Não prometa sincronização automática no Drive antes que OAuth, restauração e testes de conflito existam. O backup exportável atual pode ser descrito com precisão como arquivo ZIP com imagens e metadados.
 
 ## Acessibilidade
 
@@ -74,7 +74,7 @@ Nunca prometa backup, segurança ou restauração antes que a implementação e 
 
 ## Próximas decisões de produto
 
-1. Implementar OAuth e sincronização incremental do Google Drive.
+1. Implementar OAuth e sincronização incremental automática do Google Drive.
 2. Adicionar revisão manual de data e horário reconhecidos.
 3. Criar testes para importação, câmera, OCR, restauração e compartilhamento.
 4. Preparar assinatura release protegida por GitHub Secrets.
