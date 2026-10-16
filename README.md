@@ -44,7 +44,7 @@ git tag v0.3.0
 git push origin v0.3.0
 ```
 
-O workflow `.github/workflows/android-release.yml` usa o Gradle Wrapper, compila o APK debug, guarda o artefato da execução e anexa `app-debug.apk` ao Release da tag. O APK é apropriado para testes; antes de distribuir publicamente, configure a chave de release permanente para preservar a assinatura entre versões.
+O workflow `.github/workflows/android-release.yml` usa o Gradle Wrapper, compila o APK debug, renomeia o artefato para `Meu-Ponto-vX.Y.Z.apk` e o anexa ao Release da tag. O APK é apropriado para testes; antes de distribuir publicamente, configure a chave de release permanente para preservar a assinatura entre versões.
 
 ## Backup no Google Drive
 O app já exporta e restaura um backup ZIP pelo seletor de documentos do Android. Para usar o Google Drive agora, escolha-o como destino ao criar o arquivo. A sincronização automática, incremental e silenciosa no estilo WhatsApp é uma etapa separada: exige OAuth no Google Cloud (cliente Android, SHA-1/SHA-256 do certificado e escopos do Drive), política de conflitos e Secrets/configuração fora do repositório. Essas credenciais não devem ser colocadas no GitHub.
