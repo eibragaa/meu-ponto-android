@@ -151,6 +151,8 @@ private fun MeuPontoApp() {
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
+    var isSelectionMode by rememberSaveable { mutableStateOf(false) }
+    var selectedReceiptIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 
     val receipts by (if (query.isBlank()) dao.observeAll() else dao.search(query))
         .collectAsState(initial = emptyList())
@@ -277,12 +279,41 @@ private fun MeuPontoApp() {
                     }
                 }
             }
-            item { SectionHeader(title = if (query.isBlank()) "Seus comprovantes" else "Resultados", count = visibleReceipts.size) }
+            item {
+                SectionHeader(
+                    title = if (query.isBlank()) "Seus comprovantes" else "Resultados",
+                    count = visibleReceipts.size,
+                    isSelectionMode = isSelectionMode,
+                    selectedCount = selectedReceiptIds.size,
+                    onToggleSelection = {
+                        isSelectionMode = !isSelectionMode
+                        if (isSelectionMode) selectedReceiptIds = emptySet()
+                    },
+                    onExport = {
+                        val selected = visibleReceipts.filter { it.id in selectedReceiptIds }
+                        shareAsPdf(context, selected)
+                        isSelectionMode = false
+                        selectedReceiptIds = emptySet()
+                    }
+                )
+            }
             if (visibleReceipts.isEmpty()) {
                 item { EmptyState(onAdd = { showAddSheet = true }, isSearch = query.isNotBlank()) }
             } else {
                 items(visibleReceipts, key = { it.id }) { receipt ->
-                    ReceiptCard(receipt = receipt, onShare = { shareAsPdf(context, receipt) })
+                    ReceiptCard(
+                        receipt = receipt,
+                        isSelectionMode = isSelectionMode,
+                        isSelected = receipt.id in selectedReceiptIds,
+                        onToggleSelection = {
+                            selectedReceiptIds = if (receipt.id in selectedReceiptIds) {
+                                selectedReceiptIds - receipt.id
+                            } else {
+                                selectedReceiptIds + receipt.id
+                            }
+                        },
+                        onShare = { shareAsPdf(context, listOf(receipt)) }
+                    )
                 }
             }
             item { TrustFooter() }
@@ -375,19 +406,46 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 }
 
 @Composable
-private fun SectionHeader(title: String, count: Int) {
+private fun SectionHeader(
+    title: String,
+    count: Int,
+    isSelectionMode: Boolean,
+    selectedCount: Int,
+    onToggleSelection: () -> Unit,
+    onExport: () -> Unit
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.width(8.dp))
         Surface(color = Mist, shape = RoundedCornerShape(8.dp)) {
             Text(count.toString(), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium, color = TealDark)
         }
+        Spacer(Modifier.weight(1f))
+        if (isSelectionMode) {
+            TextButton(onClick = onExport, enabled = selectedCount > 0) {
+                Text(if (selectedCount > 0) "PDF ($selectedCount)" else "PDF")
+            }
+            TextButton(onClick = onToggleSelection) { Text("Cancelar") }
+        } else {
+            TextButton(onClick = onToggleSelection) { Text("Selecionar") }
+        }
     }
 }
 
 @Composable
-private fun ReceiptCard(receipt: Receipt, onShare: () -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+private fun ReceiptCard(
+    receipt: Receipt,
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    onToggleSelection: () -> Unit,
+    onShare: () -> Unit
+) {
+    Card(
+        Modifier.fillMaxWidth().clickable(enabled = isSelectionMode, onClick = onToggleSelection),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             ReceiptThumbnail(receipt.imagePath)
             Spacer(Modifier.width(13.dp))
@@ -396,7 +454,11 @@ private fun ReceiptCard(receipt: Receipt, onShare: () -> Unit) {
                 Text(if (receipt.workTime.isBlank()) "Horário pendente de revisão" else "Horário identificado • ${receipt.workTime}", style = MaterialTheme.typography.bodySmall, color = if (receipt.workTime.isBlank()) Muted else TealDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(File(receipt.imagePath).name, style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = Teal) }
+            if (isSelectionMode) {
+                androidx.compose.material3.Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
+            } else {
+                IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = Teal) }
+            }
         }
     }
 }
@@ -531,28 +593,50 @@ private fun decodePreview(path: String): Bitmap? {
     return BitmapFactory.decodeFile(path, options)
 }
 
-private fun shareAsPdf(context: Context, receipt: Receipt) {
+private fun shareAsPdf(context: Context, receipts: List<Receipt>) {
+    if (receipts.isEmpty()) return
     try {
-        val bitmap = BitmapFactory.decodeFile(receipt.imagePath) ?: error("Imagem indisponível")
         val pdf = PdfDocument()
-        val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width.coerceAtLeast(1), bitmap.height.coerceAtLeast(1), 1).create()
-        val page = pdf.startPage(pageInfo)
-        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-        pdf.finishPage(page)
+        receipts.forEachIndexed { index, receipt ->
+            val bitmap = decodePdfBitmap(receipt.imagePath) ?: error("Imagem indisponível")
+            val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width.coerceAtLeast(1), bitmap.height.coerceAtLeast(1), index + 1).create()
+            val page = pdf.startPage(pageInfo)
+            page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+            pdf.finishPage(page)
+            bitmap.recycle()
+        }
         val outDir = File(context.cacheDir, "shared").apply { mkdirs() }
-        val outFile = File(outDir, "comprovante_${receipt.workDate.replace('/', '-')}.pdf")
-        outFile.outputStream().use { pdf.writeTo(it) }
-        pdf.close()
+        val fileName = if (receipts.size == 1) {
+            "comprovante_${receipts.first().workDate.replace('/', '-')}.pdf"
+        } else {
+            "meu-ponto_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.pdf"
+        }
+        val outFile = File(outDir, fileName)
+        try {
+            outFile.outputStream().use { pdf.writeTo(it) }
+        } finally {
+            pdf.close()
+        }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", outFile)
         val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(android.content.Intent.createChooser(intent, "Compartilhar comprovante"))
+        val chooserTitle = if (receipts.size == 1) "Compartilhar comprovante" else "Compartilhar comprovantes"
+        context.startActivity(android.content.Intent.createChooser(intent, chooserTitle))
     } catch (error: Exception) {
         Toast.makeText(context, "Falha ao gerar PDF", Toast.LENGTH_LONG).show()
     }
+}
+
+private fun decodePdfBitmap(path: String): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (bounds.outWidth / sample > 2200 || bounds.outHeight / sample > 2200) sample *= 2
+    return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
 }
 
 private val AppTypography = androidx.compose.material3.Typography(
