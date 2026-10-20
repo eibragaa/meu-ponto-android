@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -73,8 +74,15 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import br.com.jean.meuponto.updater.AppUpdateInfo
+import br.com.jean.meuponto.updater.AppUpdater
+import br.com.jean.meuponto.updater.UpdateDialog
+import br.com.jean.meuponto.updater.AboutSheet
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -101,6 +109,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
@@ -125,6 +134,14 @@ import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.CipherInputStream
+import javax.crypto.CipherOutputStream
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -138,6 +155,7 @@ private val Cream = Color(0xFFF8F7F2)
 private val Mist = Color(0xFFE9EFEC)
 private val Line = Color(0xFFD6E0DB)
 private val Muted = Color(0xFF6B7773)
+private val PtBrLocale: Locale = Locale.forLanguageTag("pt-BR")
 
 private data class FilterOption(val key: String, val label: String)
 
@@ -168,21 +186,22 @@ private fun groupReceipts(receipts: List<Receipt>, mode: String): List<ReceiptGr
 
 private fun weekLabel(workDate: String): String {
     val parsed = runCatching {
-        SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).apply { isLenient = false }.parse(workDate)
+        SimpleDateFormat("dd/MM/yyyy", PtBrLocale).apply { isLenient = false }.parse(workDate)
     }.getOrNull() ?: return "Data a revisar"
-    val start = Calendar.getInstance(Locale("pt", "BR")).apply {
+    val start = Calendar.getInstance(PtBrLocale).apply {
         time = parsed
         firstDayOfWeek = Calendar.MONDAY
         minimalDaysInFirstWeek = 4
         set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
     }
     val end = (start.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 6) }
-    val formatter = SimpleDateFormat("dd/MM", Locale("pt", "BR"))
+    val formatter = SimpleDateFormat("dd/MM", PtBrLocale)
     return "${formatter.format(start.time)} – ${formatter.format(end.time)}"
 }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -231,18 +250,38 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var selectedGroupMode by rememberSaveable { mutableStateOf("none") }
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
+    var showOrganizeSheet by rememberSaveable { mutableStateOf(false) }
+    var backupPasswordDialog by rememberSaveable { mutableStateOf<String?>(null) }
     var receiptBeingEdited by remember { mutableStateOf<Receipt?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
     var isBackupProcessing by remember { mutableStateOf(false) }
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     var selectedReceiptIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var pendingBackupPassword by remember { mutableStateOf("") }
+    val currentVersion = remember { AppUpdater.getInstalledVersionName(context) }
+    var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var showUpdateDialog by rememberSaveable { mutableStateOf(false) }
+    var showAboutSheet by rememberSaveable { mutableStateOf(false) }
+    var isCheckingUpdatesManually by remember { mutableStateOf(false) }
+    var hasCheckedAutoUpdate by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!hasCheckedAutoUpdate) {
+            hasCheckedAutoUpdate = true
+            val update = AppUpdater.checkForUpdates(currentVersion).getOrNull()
+            if (update != null) {
+                availableUpdate = update
+                showUpdateDialog = true
+            }
+        }
+    }
 
     val receipts by (if (query.isBlank()) dao.observeAll() else dao.search(query))
         .collectAsState(initial = emptyList())
     val visibleReceipts = remember(receipts, selectedFilter) {
         when (selectedFilter) {
             "today" -> {
-                val today = SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).format(Date())
+                val today = SimpleDateFormat("dd/MM/yyyy", PtBrLocale).format(Date())
                 receipts.filter { it.workDate == today }
             }
             "time" -> receipts.filter { it.workTime.isNotBlank() }
@@ -255,6 +294,22 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
 
     fun showMessage(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    fun checkUpdatesManually() {
+        scope.launch {
+            isCheckingUpdatesManually = true
+            val result = AppUpdater.checkForUpdates(currentVersion)
+            isCheckingUpdatesManually = false
+            val update = result.getOrNull()
+            if (update != null) {
+                availableUpdate = update
+                showAboutSheet = false
+                showUpdateDialog = true
+            } else {
+                showMessage("Você já está na versão mais recente (v$currentVersion).")
+            }
+        }
     }
 
     fun processUri(uri: Uri) {
@@ -279,7 +334,9 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         if (uri != null) {
             scope.launch {
                 isBackupProcessing = true
-                val message = runCatching { createBackup(context, dao, uri) }
+                val password = pendingBackupPassword
+                pendingBackupPassword = ""
+                val message = runCatching { createBackup(context, dao, uri, password) }
                     .fold(
                         onSuccess = { count -> "Backup criado com $count comprovante${if (count == 1) "" else "s"}." },
                         onFailure = { "Não foi possível criar o backup." }
@@ -294,7 +351,9 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         if (uri != null) {
             scope.launch {
                 isBackupProcessing = true
-                val message = runCatching { restoreBackup(context, dao, uri) }
+                val password = pendingBackupPassword
+                pendingBackupPassword = ""
+                val message = runCatching { restoreBackup(context, dao, uri, password) }
                     .fold(
                         onSuccess = { count -> "$count comprovante${if (count == 1) " restaurado" else "s restaurados"}." },
                         onFailure = { "Não foi possível restaurar esse backup." }
@@ -352,15 +411,17 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAddSheet = true },
-                icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                text = { Text("Adicionar") },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.navigationBarsPadding().padding(bottom = 8.dp)
-            )
+            if (receipts.isNotEmpty()) {
+                ExtendedFloatingActionButton(
+                    onClick = { showAddSheet = true },
+                    icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                    text = { Text("Adicionar") },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.navigationBarsPadding().padding(bottom = 8.dp)
+                )
+            }
         }
     ) { padding ->
         LazyColumn(
@@ -368,60 +429,15 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { Header(isDarkTheme = isDarkTheme, onThemeClick = onToggleTheme, onBackupClick = { showBackupSheet = true }) }
+            item { Header(isDarkTheme = isDarkTheme, onThemeClick = onToggleTheme, onBackupClick = { showBackupSheet = true }, onAboutClick = { showAboutSheet = true }) }
             item { SummaryCard(total = receipts.size, isProcessing = isProcessing, isDarkTheme = isDarkTheme) }
             item { SearchField(query = query, onQueryChange = { query = it }) }
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(filters) { option ->
-                        FilterChip(
-                            selected = selectedFilter == option.key,
-                            onClick = { selectedFilter = option.key },
-                            label = { Text(option.label) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = Color.White,
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = selectedFilter == option.key,
-                                borderColor = MaterialTheme.colorScheme.outline,
-                                selectedBorderColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-                }
-            }
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Agrupar", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(10.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(groupModes) { option ->
-                            FilterChip(
-                                selected = selectedGroupMode == option.key,
-                                onClick = { selectedGroupMode = option.key },
-                                label = { Text(option.label) },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = Color.White,
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ),
-                                border = FilterChipDefaults.filterChipBorder(
-                                    enabled = true,
-                                    selected = selectedGroupMode == option.key,
-                                    borderColor = MaterialTheme.colorScheme.outline,
-                                    selectedBorderColor = MaterialTheme.colorScheme.primary
-                                )
-                            )
-                        }
-                    }
-                }
+                OrganizeBar(
+                    selectedFilter = selectedFilter,
+                    selectedGroupMode = selectedGroupMode,
+                    onClick = { showOrganizeSheet = true }
+                )
             }
             item {
                 SectionHeader(
@@ -468,7 +484,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                     }
                 }
             }
-            item { TrustFooter() }
+            item { TrustFooter(versionName = currentVersion, onCheckUpdate = { checkUpdatesManually() }) }
         }
     }
 
@@ -484,9 +500,38 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             isProcessing = isBackupProcessing,
             onDismiss = { showBackupSheet = false },
             onCreateBackup = {
-                createBackupLauncher.launch("meu-ponto-backup-${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.zip")
+                showBackupSheet = false
+                backupPasswordDialog = "create"
             },
-            onRestoreBackup = { restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
+            onRestoreBackup = {
+                showBackupSheet = false
+                backupPasswordDialog = "restore"
+            }
+        )
+    }
+    if (showOrganizeSheet) {
+        OrganizeSheet(
+            selectedFilter = selectedFilter,
+            selectedGroupMode = selectedGroupMode,
+            onFilterChange = { selectedFilter = it },
+            onGroupChange = { selectedGroupMode = it },
+            onDismiss = { showOrganizeSheet = false }
+        )
+    }
+    backupPasswordDialog?.let { action ->
+        BackupPasswordDialog(
+            action = action,
+            onDismiss = { backupPasswordDialog = null },
+            onConfirm = { password ->
+                backupPasswordDialog = null
+                if (action == "create") {
+                    pendingBackupPassword = password
+                    createBackupLauncher.launch("meu-ponto-backup-${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.zip")
+                } else {
+                    pendingBackupPassword = password
+                    restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                }
+            }
         )
     }
     receiptBeingEdited?.let { receipt ->
@@ -502,10 +547,35 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             }
         )
     }
+
+    if (showUpdateDialog) {
+        availableUpdate?.let { info ->
+            UpdateDialog(
+                updateInfo = info,
+                currentVersion = currentVersion,
+                onDismiss = { showUpdateDialog = false }
+            )
+        }
+    }
+
+    if (showAboutSheet) {
+        AboutSheet(
+            currentVersion = currentVersion,
+            isCheckingUpdate = isCheckingUpdatesManually,
+            onCheckUpdate = { checkUpdatesManually() },
+            onDismiss = { showAboutSheet = false },
+            brandMark = { MeuPontoMark(Modifier.size(56.dp)) }
+        )
+    }
 }
 
 @Composable
-private fun Header(isDarkTheme: Boolean, onThemeClick: () -> Unit, onBackupClick: () -> Unit) {
+private fun Header(
+    isDarkTheme: Boolean,
+    onThemeClick: () -> Unit,
+    onBackupClick: () -> Unit,
+    onAboutClick: () -> Unit
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         MeuPontoMark(Modifier.size(46.dp))
         Spacer(Modifier.width(12.dp))
@@ -516,8 +586,13 @@ private fun Header(isDarkTheme: Boolean, onThemeClick: () -> Unit, onBackupClick
         IconButton(onClick = onThemeClick, modifier = Modifier.size(42.dp).background(MaterialTheme.colorScheme.surface, CircleShape)) {
             Icon(if (isDarkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, contentDescription = if (isDarkTheme) "Ativar tema claro" else "Ativar tema escuro", tint = MaterialTheme.colorScheme.primary)
         }
+        Spacer(Modifier.width(6.dp))
         IconButton(onClick = onBackupClick, modifier = Modifier.size(42.dp).background(MaterialTheme.colorScheme.surface, CircleShape)) {
             Icon(Icons.Outlined.CloudOff, contentDescription = "Status do backup", tint = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(Modifier.width(6.dp))
+        IconButton(onClick = onAboutClick, modifier = Modifier.size(42.dp).background(MaterialTheme.colorScheme.surface, CircleShape)) {
+            Icon(Icons.Outlined.Info, contentDescription = "Sobre e Atualizações", tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -590,6 +665,92 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
         )
     )
 }
+
+@Composable
+private fun OrganizeBar(selectedFilter: String, selectedGroupMode: String, onClick: () -> Unit) {
+    val filterLabel = filters.firstOrNull { it.key == selectedFilter }?.label ?: "Todos"
+    val groupLabel = groupModes.firstOrNull { it.key == selectedGroupMode }?.label ?: "Sem agrupar"
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Visão do arquivo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("$filterLabel · $groupLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        OutlinedButton(
+            onClick = onClick,
+            shape = RoundedCornerShape(14.dp),
+            contentPadding = PaddingValues(horizontal = 13.dp, vertical = 8.dp)
+        ) {
+            Icon(Icons.Outlined.Tune, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("Organizar")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OrganizeSheet(
+    selectedFilter: String,
+    selectedGroupMode: String,
+    onFilterChange: (String) -> Unit,
+    onGroupChange: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
+        Column(
+            Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("Organizar arquivo", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("Escolha uma visão sem poluir a tela principal.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Mostrar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(filters) { option ->
+                    FilterChip(
+                        selected = selectedFilter == option.key,
+                        onClick = { onFilterChange(option.key) },
+                        label = { Text(option.label) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = organizeChipColors(),
+                        border = organizeChipBorder(selectedFilter == option.key)
+                    )
+                }
+            }
+            Text("Agrupar por", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(groupModes) { option ->
+                    FilterChip(
+                        selected = selectedGroupMode == option.key,
+                        onClick = { onGroupChange(option.key) },
+                        label = { Text(option.label) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = organizeChipColors(),
+                        border = organizeChipBorder(selectedGroupMode == option.key)
+                    )
+                }
+            }
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                Text("Aplicar visão")
+            }
+        }
+    }
+}
+
+@Composable
+private fun organizeChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = MaterialTheme.colorScheme.primary,
+    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+    containerColor = MaterialTheme.colorScheme.surface,
+    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+)
+
+@Composable
+private fun organizeChipBorder(selected: Boolean) = FilterChipDefaults.filterChipBorder(
+    enabled = true,
+    selected = selected,
+    borderColor = MaterialTheme.colorScheme.outline,
+    selectedBorderColor = MaterialTheme.colorScheme.primary
+)
 
 @Composable
 private fun SectionHeader(
@@ -698,11 +859,26 @@ private fun EmptyState(onAdd: () -> Unit, isSearch: Boolean) {
 }
 
 @Composable
-private fun TrustFooter() {
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.TaskAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("Seus arquivos ficam privados neste aparelho", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun TrustFooter(versionName: String, onCheckUpdate: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.TaskAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Seus arquivos ficam privados neste aparelho", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(
+            text = "Meu Ponto v$versionName • Toque para verificar atualizações",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+            modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onCheckUpdate).padding(horizontal = 6.dp, vertical = 2.dp)
+        )
     }
 }
 
@@ -753,7 +929,7 @@ private fun BackupSheet(
                     Text("Proteção local e exportação segura", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Crie um backup completo com imagens e dados reconhecidos. No seletor do Android, escolha o Google Drive ou outro local seguro; depois use Restaurar para trazer tudo de volta.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Crie um backup completo com imagens e dados reconhecidos. Você poderá protegê-lo com uma senha e escolher o Google Drive ou outro local seguro.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(
                 onClick = onCreateBackup,
                 enabled = !isProcessing,
@@ -772,10 +948,46 @@ private fun BackupSheet(
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
                     Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(10.dp))
-                    Text("O arquivo é criado no aparelho e só vai para o local que você escolher. Nenhuma credencial do Google fica no aplicativo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("O arquivo é criado no aparelho e só vai para o local que você escolher. A senha não é armazenada pelo aplicativo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Entendi", color = MaterialTheme.colorScheme.primary) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BackupPasswordDialog(action: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var password by rememberSaveable { mutableStateOf("") }
+    val isCreate = action == "create"
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
+        Column(
+            Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(if (isCreate) "Proteger backup" else "Abrir backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text(
+                if (isCreate) "Use uma senha que você consiga lembrar. Sem ela, o backup protegido não poderá ser restaurado."
+                else "Digite a senha usada ao criar o backup. Backups antigos sem senha podem ser restaurados deixando este campo vazio.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Senha ${if (isCreate) "(opcional)" else ""}") },
+                visualTransformation = PasswordVisualTransformation()
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text("Cancelar") }
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { onConfirm(password) }, shape = RoundedCornerShape(14.dp)) {
+                    Text(if (isCreate) "Continuar" else "Restaurar")
+                }
+            }
         }
     }
 }
@@ -859,11 +1071,16 @@ private fun copyToPrivateStorage(context: Context, uri: Uri): File {
     return file
 }
 
-private suspend fun createBackup(context: Context, dao: ReceiptDao, destination: Uri): Int = withContext(Dispatchers.IO) {
+private val BackupMagic = "MEUPONTO_BACKUP_V2".toByteArray(Charsets.US_ASCII)
+private const val BackupVersion: Byte = 1
+private const val BackupIterations = 120_000
+
+private suspend fun createBackup(context: Context, dao: ReceiptDao, destination: Uri, password: String): Int = withContext(Dispatchers.IO) {
     val receipts = dao.getAll()
     val manifest = JSONArray()
-    context.contentResolver.openOutputStream(destination)?.use { output ->
-        ZipOutputStream(BufferedOutputStream(output)).use { zip ->
+    val zipFile = File.createTempFile("meu-ponto-backup-", ".zip", context.cacheDir)
+    try {
+        ZipOutputStream(BufferedOutputStream(zipFile.outputStream())).use { zip ->
             receipts.forEach { receipt ->
                 val source = File(receipt.imagePath)
                 if (!source.isFile) return@forEach
@@ -873,7 +1090,6 @@ private suspend fun createBackup(context: Context, dao: ReceiptDao, destination:
                 zip.closeEntry()
                 manifest.put(
                     JSONObject()
-                        .put("id", receipt.id)
                         .put("capturedAt", receipt.capturedAt)
                         .put("workDate", receipt.workDate)
                         .put("workTime", receipt.workTime)
@@ -885,14 +1101,25 @@ private suspend fun createBackup(context: Context, dao: ReceiptDao, destination:
             zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
             zip.closeEntry()
         }
-    } ?: error("Destino de backup indisponível")
-    manifest.length()
+        if (password.isBlank()) {
+            context.contentResolver.openOutputStream(destination)?.use { output ->
+                zipFile.inputStream().use { it.copyTo(output) }
+            } ?: error("Destino de backup indisponível")
+        } else {
+            encryptBackup(zipFile, context, destination, password)
+        }
+        manifest.length()
+    } finally {
+        zipFile.delete()
+    }
 }
 
-private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: Uri): Int = withContext(Dispatchers.IO) {
+private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: Uri, password: String): Int = withContext(Dispatchers.IO) {
     val restoreDir = File(context.cacheDir, "restore_${System.currentTimeMillis()}").apply { mkdirs() }
+    val zipFile = File.createTempFile("meu-ponto-restore-", ".zip", context.cacheDir)
     try {
-        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+        decryptOrCopyBackup(context, sourceUri, zipFile, password)
+        zipFile.inputStream().use { input ->
             ZipInputStream(BufferedInputStream(input)).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
@@ -923,7 +1150,7 @@ private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: 
                 imageSource.copyTo(imageDestination, overwrite = true)
                 add(
                     Receipt(
-                        id = item.getLong("id"),
+                        id = 0,
                         capturedAt = item.getLong("capturedAt"),
                         workDate = item.getString("workDate"),
                         workTime = item.getString("workTime"),
@@ -937,6 +1164,80 @@ private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: 
         restored.size
     } finally {
         restoreDir.deleteRecursively()
+        zipFile.delete()
+    }
+}
+
+private fun deriveBackupKey(password: String, salt: ByteArray): SecretKeySpec {
+    val spec = PBEKeySpec(password.toCharArray(), salt, BackupIterations, 256)
+    return try {
+        SecretKeySpec(
+            SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded,
+            "AES"
+        )
+    } finally {
+        spec.clearPassword()
+    }
+}
+
+private fun encryptBackup(source: File, context: Context, destination: Uri, password: String) {
+    val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
+    val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+        init(Cipher.ENCRYPT_MODE, deriveBackupKey(password, salt), GCMParameterSpec(128, iv))
+    }
+    context.contentResolver.openOutputStream(destination)?.use { output ->
+        output.write(BackupMagic)
+        output.write(byteArrayOf(BackupVersion))
+        output.write(salt)
+        output.write(iv)
+        CipherOutputStream(output, cipher).use { encrypted ->
+            source.inputStream().use { it.copyTo(encrypted) }
+        }
+    } ?: error("Destino de backup indisponível")
+}
+
+private fun decryptOrCopyBackup(context: Context, sourceUri: Uri, destination: File, password: String) {
+    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+        val header = ByteArray(BackupMagic.size)
+        var read = 0
+        while (read < header.size) {
+            val count = input.read(header, read, header.size - read)
+            if (count <= 0) break
+            read += count
+        }
+        val encrypted = read == BackupMagic.size && header.contentEquals(BackupMagic)
+        if (!encrypted) {
+            destination.outputStream().use { output ->
+                output.write(header, 0, read)
+                input.copyTo(output)
+            }
+            return
+        }
+        val version = input.read()
+        if (version != BackupVersion.toInt()) error("Versão de backup não suportada")
+        val salt = ByteArray(16).also { input.readFully(it) }
+        val iv = ByteArray(12).also { input.readFully(it) }
+        if (password.isBlank()) error("Este backup precisa de uma senha")
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(Cipher.DECRYPT_MODE, deriveBackupKey(password, salt), GCMParameterSpec(128, iv))
+        }
+        try {
+            CipherInputStream(input, cipher).use { decrypted ->
+                destination.outputStream().use { output -> decrypted.copyTo(output) }
+            }
+        } catch (_: Exception) {
+            throw IllegalArgumentException("Senha incorreta ou backup danificado")
+        }
+    } ?: error("Arquivo de backup indisponível")
+}
+
+private fun java.io.InputStream.readFully(buffer: ByteArray) {
+    var offset = 0
+    while (offset < buffer.size) {
+        val count = read(buffer, offset, buffer.size - offset)
+        if (count <= 0) error("Backup incompleto")
+        offset += count
     }
 }
 
@@ -948,7 +1249,7 @@ private suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: Fi
     }
     val dateMatch = Regex("\\b(\\d{2})[./-](\\d{2})[./-](\\d{4})\\b").find(text)
     val timeMatch = Regex("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b").find(text)
-    val date = dateMatch?.value?.replace('.', '/')?.replace('-', '/') ?: SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).format(Date())
+    val date = dateMatch?.value?.replace('.', '/')?.replace('-', '/') ?: SimpleDateFormat("dd/MM/yyyy", PtBrLocale).format(Date())
     val time = timeMatch?.value ?: ""
     dao.insert(Receipt(capturedAt = System.currentTimeMillis(), workDate = date, workTime = time, imagePath = file.absolutePath, recognizedText = text))
     return if (dateMatch != null) "Comprovante salvo • confira a data $date" else "Comprovante salvo • revise a data reconhecida"
