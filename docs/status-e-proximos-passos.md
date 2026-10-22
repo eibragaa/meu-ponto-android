@@ -84,8 +84,8 @@ Mudanças já existentes no projeto ao iniciar esta rodada, que implementam part
 
 Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e retenção, direitos do titular, permissões). Precisa de revisão antes de publicar:
 
-- [ ] **Corrigir texto:** "Texto reconhecido por OCR (contrato social do trabalho)" não faz sentido. Trocar pela descrição correta do dado.
-- [ ] **Confirmar o termo:** o texto usa "DVT". O termo correto na LGPD é **encarregado** (DPO). Confirmar qual pessoa ou canal será o encarregado.
+- [x] **Corrigir texto:** o item do OCR agora diz "extraído da imagem do comprovante".
+- [x] **Confirmar o termo:** "DVT" trocado por **encarregado** em todo o texto. Falta apenas definir a pessoa ou canal do encarregado (ver decisões pendentes).
 - [ ] **Preencher placeholders:** responsável e contato de suporte real.
 - [ ] **Publicar em URL HTTPS** pública antes da submissão na Play.
 - [ ] **Conferir** se o texto bate com o comportamento real (Auto Backup desativado, updater só na `github`).

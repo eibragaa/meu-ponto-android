@@ -2,19 +2,19 @@
 
 _Esta política será publicada em URL HTTPS antes do envio para a Play Store; enquanto isso, o texto abaixo fica referenciado no app (tela Sobre)._
 
-## Controladora e encarregado (DVT)
+## Controlador e encarregado
 
-O Meu Ponto é um aplicativo pessoal operado como controlador dos dados descritos nesta política. O encarregado (DVT) e o canal oficial de contato devem ser preenchidos antes da publicação na Play Store:
+O Meu Ponto é um aplicativo pessoal operado como controlador dos dados descritos nesta política. O encarregado pelo tratamento de dados e o canal oficial de contato devem ser preenchidos antes da publicação na Play Store:
 
-- Responsável: **_preencher com nome/RG do controlador_**
-- Contato (DVT): **_preencher com e-mail de suporte real_**
+- Controlador: **_preencher com nome/RG do controlador_**
+- Contato do encarregado: **_preencher com e-mail de suporte real_**
 
 ## Dados processados e base legal
 
 | Dado | Finalidade | Base legal (LGPD) |
 | --- | --- | --- |
 | Imagens dos comprovantes | Arquivar e organizar os registros digitados | Execução de serviço solicitado pelo titular |
-| Texto reconhecido por OCR (contrato social do trabalho) | Preenchimento automático de data e horário | Execução de serviço solicitado pelo titular |
+| Texto reconhecido por OCR (extraído da imagem do comprovante) | Preenchimento automático de data e horário | Execução de serviço solicitado pelo titular |
 | Datas e horários digitados | Cálculo de horas e resumos | Execução de serviço solicitado pelo titular |
 | Configurações da folha (períodos e resultados) | Cálculo de salário e de insights | Execução de serviço solicitado pelo titular |
 | Dados técnicos do aparelho (versão do app/sistema no updater) | Verificação de atualização (somente flavor `github`) | Legítimo interesse em manter o app seguro e atualizado |
@@ -39,7 +39,7 @@ Quando o usuário cria um backup, o app gera um ZIP e o envia somente ao destino
 
 ## Direitos do titular (LGPD)
 
-O titular pode, a qualquer momento: acessar, corrigir, exportar (backup/PDF) e apagar seus dados, direto pelo app. Pedidos de esclarecimento ou reclamação podem ser enviados ao contato do DVT; o titular pode recorrer à ANPD.
+O titular pode, a qualquer momento: acessar, corrigir, exportar (backup/PDF) e apagar seus dados, direto pelo app. Pedidos de esclarecimento ou reclamação podem ser enviados ao contato do encarregado; o titular pode recorrer à ANPD.
 
 ## Contato
 
