@@ -89,6 +89,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -299,6 +301,11 @@ private fun formatDateInput(value: String): String {
 private fun formatTimeInput(value: String): String {
     val digits = value.filter { it.isDigit() }.take(4)
     return if (digits.length > 2) "${digits.take(2)}:${digits.drop(2)}" else digits
+}
+
+private fun maskedFieldValue(input: TextFieldValue, format: (String) -> String): TextFieldValue {
+    val formatted = format(input.text)
+    return TextFieldValue(formatted, TextRange(formatted.length))
 }
 
 private fun receiptTimeLabel(receipt: Receipt): String = when {
@@ -1494,7 +1501,10 @@ private fun EditReceiptSheet(
     onDismiss: () -> Unit,
     onSave: (workDate: String, entryTime: String?, exitTime: String?) -> Unit
 ) {
-    var workDate by remember(receipt.id) { mutableStateOf(receipt.workDate) }
+    var workDateField by remember(receipt.id) {
+        mutableStateOf(TextFieldValue(receipt.workDate, TextRange(receipt.workDate.length)))
+    }
+    val workDate = workDateField.text
     var mode by remember(receipt.id) {
         mutableStateOf(
             when {
@@ -1506,16 +1516,20 @@ private fun EditReceiptSheet(
             }
         )
     }
-    var entryTime by remember(receipt.id) {
-        mutableStateOf(
-            receipt.entryTime ?: if (receipt.exitTime == null) {
-                receipt.workTime.takeIf { it.isNotBlank() }.orEmpty()
-            } else {
-                ""
-            }
-        )
+    val initialEntry = receipt.entryTime ?: if (receipt.exitTime == null) {
+        receipt.workTime.takeIf { it.isNotBlank() }.orEmpty()
+    } else {
+        ""
     }
-    var exitTime by remember(receipt.id) { mutableStateOf(receipt.exitTime ?: "") }
+    var entryField by remember(receipt.id) {
+        mutableStateOf(TextFieldValue(initialEntry, TextRange(initialEntry.length)))
+    }
+    val entryTime = entryField.text
+    val initialExit = receipt.exitTime ?: ""
+    var exitField by remember(receipt.id) {
+        mutableStateOf(TextFieldValue(initialExit, TextRange(initialExit.length)))
+    }
+    val exitTime = exitField.text
 
     val dateValid = isValidWorkDate(workDate)
     val entryValid = entryTime.isBlank() || WorkStatsCalculator.parseClockTime(entryTime) != null
@@ -1552,8 +1566,8 @@ private fun EditReceiptSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             OutlinedTextField(
-                value = workDate,
-                onValueChange = { workDate = formatDateInput(it) },
+                value = workDateField,
+                onValueChange = { workDateField = maskedFieldValue(it, ::formatDateInput) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Data") },
@@ -1592,8 +1606,8 @@ private fun EditReceiptSheet(
 
             if (mode == "both" || mode == "entry") {
                 OutlinedTextField(
-                    value = entryTime,
-                    onValueChange = { entryTime = formatTimeInput(it) },
+                    value = entryField,
+                    onValueChange = { entryField = maskedFieldValue(it, ::formatTimeInput) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text(if (mode == "both") "Entrada" else "Horário") },
@@ -1607,8 +1621,8 @@ private fun EditReceiptSheet(
             }
             if (mode == "both" || mode == "exit") {
                 OutlinedTextField(
-                    value = exitTime,
-                    onValueChange = { exitTime = formatTimeInput(it) },
+                    value = exitField,
+                    onValueChange = { exitField = maskedFieldValue(it, ::formatTimeInput) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text(if (mode == "both") "Saída" else "Horário") },
@@ -1638,10 +1652,12 @@ private fun EditReceiptSheet(
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
+                        val keepEntry = mode == "both" || mode == "entry"
+                        val keepExit = mode == "both" || mode == "exit"
                         onSave(
                             workDate.trim(),
-                            entryTime.trim().takeIf { it.isNotBlank() },
-                            exitTime.trim().takeIf { it.isNotBlank() }
+                            entryTime.trim().takeIf { keepEntry && it.isNotBlank() },
+                            exitTime.trim().takeIf { keepExit && it.isNotBlank() }
                         )
                     },
                     enabled = dateValid && timesValid,

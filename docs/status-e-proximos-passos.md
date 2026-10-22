@@ -184,6 +184,9 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 | P15 | Setup Java v4 e `ubuntu-latest` com avisos de depreciação | Pode quebrar em breve | Atualizar `setup-java` para v5 e fixar `ubuntu-24.04` |
 | P16 | Turno noturno sem pareamento entre dias e comprovantes restaurados sem tipo (entrada/saída) | Horas zeradas para quem trabalha à noite (ver 1.9) | **Lógica corrigida** (local). Classificar comprovantes no celular e publicar `v0.5.1` |
 | P17 | Updater: instalação falha com assinatura diferente, e o erro aparece só depois do Play Protect | Usuário sem clareza sobre a migração | Mostrar mensagem de assinatura diferente antes de abrir o instalador (melhoria no updater) |
+| P18 | Editor de horário: ao digitar, o cursor voltava e os dígitos entravam fora de ordem (ex.: "22:34" em vez de "22:43") | Dados errados ao editar | **Corrigido** (local): campo guarda o cursor e vai para o fim após a máscara. Testado no celular |
+| P19 | Editor: "Só entrada" ou "Só saída" salvava também o outro horário (ex.: entrada e saída iguais para um comprovante só com horário) | Horas e pendências erradas | **Corrigido** (local): só salva o tipo escolhido. Testado no 07:00 do 20/10 |
+| P20 | "Revisar" no cabeçalho do dia não explica o motivo (ex.: saída sem entrada no dia anterior). O aviso no card some ao salvar, mas o dia continua pendente | Usuário acha que não salvou | Mostrar o motivo no cabeçalho (ex.: "saída sem entrada") ou por comprovante |
 
 ---
 
