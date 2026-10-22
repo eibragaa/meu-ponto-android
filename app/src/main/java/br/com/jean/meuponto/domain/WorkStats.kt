@@ -4,6 +4,7 @@ import br.com.jean.meuponto.data.Receipt
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.ResolverStyle
@@ -74,10 +75,25 @@ object WorkStatsCalculator {
     fun durationMinutes(receipt: Receipt): Int? =
         durationMinutes(receipt.entryTime, receipt.exitTime)
 
-    fun dayStats(receipts: List<Receipt>): Map<String, WorkDayStats> =
-        receipts.groupBy { it.workDate.ifBlank { "revisar" } }.mapValues { (date, dayReceipts) ->
-            calculateDay(date, dayReceipts)
+    fun dayStats(receipts: List<Receipt>): Map<String, WorkDayStats> {
+        val paired = pairPunches(receipts)
+        return receipts.groupBy { it.workDate.ifBlank { "revisar" } }.mapValues { (date, dayReceipts) ->
+            var minutes = paired.minutesByDate[date] ?: 0
+            var pending = date in paired.pendingDates || dayReceipts.any { it.needsReview }
+            dayReceipts.forEach { receipt ->
+                if (parseClockTime(receipt.entryTime) != null && parseClockTime(receipt.exitTime) != null) {
+                    val worked = durationMinutes(receipt.entryTime, receipt.exitTime)
+                    if (worked != null) minutes += worked else pending = true
+                }
+            }
+            WorkDayStats(
+                date = date,
+                minutes = minutes,
+                receiptCount = dayReceipts.size,
+                pending = pending
+            )
         }
+    }
 
     fun periodStats(
         receipts: List<Receipt>,
@@ -166,55 +182,57 @@ object WorkStatsCalculator {
         return date.dayOfWeek != DayOfWeek.SATURDAY && date.dayOfWeek != DayOfWeek.SUNDAY
     }
 
-    private fun calculateDay(date: String, receipts: List<Receipt>): WorkDayStats {
-        val punches = mutableListOf<Punch>()
-        var pending = receipts.any { it.needsReview }
-        var minutes = 0
+    private fun pairPunches(receipts: List<Receipt>): PairResult {
+        val minutesByDate = mutableMapOf<String, Int>()
+        val pendingDates = mutableSetOf<String>()
+        val dated = mutableListOf<Punch>()
 
         receipts.forEach { receipt ->
+            val key = receipt.workDate.ifBlank { "revisar" }
             val entry = parseClockTime(receipt.entryTime)
             val exit = parseClockTime(receipt.exitTime)
-            if (entry != null && exit != null) {
-                val worked = durationMinutes(receipt.entryTime, receipt.exitTime)
-                if (worked != null) {
-                    minutes += worked
+            if (entry != null && exit != null) return@forEach
+            val date = parseWorkDate(receipt.workDate)
+            val kinds = when {
+                entry != null -> listOf(entry to PunchKind.ENTRY)
+                exit != null -> listOf(exit to PunchKind.EXIT)
+                else -> listOfNotNull(parseClockTime(receipt.workTime)?.let { it to PunchKind.UNKNOWN })
+            }
+            kinds.forEach { (time, kind) ->
+                if (date == null || kind == PunchKind.UNKNOWN) {
+                    pendingDates += key
                 } else {
-                    pending = true
-                }
-            } else {
-                entry?.let { punches += Punch(it, PunchKind.ENTRY) }
-                exit?.let { punches += Punch(it, PunchKind.EXIT) }
-                if (entry == null && exit == null) {
-                    parseClockTime(receipt.workTime)?.let { punches += Punch(it, PunchKind.UNKNOWN) }
+                    dated += Punch(key, date.atTime(time), kind)
                 }
             }
         }
 
-        val openEntries = ArrayDeque<LocalTime>()
-        punches.sortedBy { it.time }.forEach { punch ->
-            when (punch.kind) {
-                PunchKind.ENTRY -> openEntries.addLast(punch.time)
-                PunchKind.EXIT -> {
-                    val entry = openEntries.removeFirstOrNull()
-                    if (entry == null) {
-                        pending = true
-                    } else {
-                        var worked = Duration.between(entry, punch.time).toMinutes().toInt()
-                        if (worked < 0) worked += 24 * 60
-                        if (worked > 0) minutes += worked else pending = true
+        val open = ArrayDeque<Punch>()
+        dated.sortedWith(compareBy<Punch> { it.at }.thenBy { if (it.kind == PunchKind.ENTRY) 0 else 1 })
+            .forEach { punch ->
+                when (punch.kind) {
+                    PunchKind.ENTRY -> open.addLast(punch)
+                    PunchKind.EXIT -> {
+                        while (open.isNotEmpty() &&
+                            Duration.between(open.first().at, punch.at).toMinutes() > MAX_SHIFT_MINUTES
+                        ) {
+                            pendingDates += open.removeFirst().key
+                        }
+                        val entry = open.removeFirstOrNull()
+                        val worked = entry?.let { Duration.between(it.at, punch.at).toMinutes().toInt() } ?: 0
+                        if (entry != null && worked > 0) {
+                            minutesByDate[entry.key] = (minutesByDate[entry.key] ?: 0) + worked
+                        } else {
+                            entry?.let { pendingDates += it.key }
+                            pendingDates += punch.key
+                        }
                     }
+                    PunchKind.UNKNOWN -> pendingDates += punch.key
                 }
-                PunchKind.UNKNOWN -> pending = true
             }
-        }
-        if (openEntries.isNotEmpty()) pending = true
+        open.forEach { pendingDates += it.key }
 
-        return WorkDayStats(
-            date = date,
-            minutes = minutes,
-            receiptCount = receipts.size,
-            pending = pending
-        )
+        return PairResult(minutesByDate, pendingDates)
     }
 
     private fun countWorkdays(start: LocalDate, end: LocalDate, daysOff: Set<LocalDate>): Int {
@@ -248,9 +266,13 @@ object WorkStatsCalculator {
         return count
     }
 
-    private data class Punch(val time: LocalTime, val kind: PunchKind)
+    private data class Punch(val key: String, val at: LocalDateTime, val kind: PunchKind)
+
+    private data class PairResult(val minutesByDate: Map<String, Int>, val pendingDates: Set<String>)
 
     private enum class PunchKind { ENTRY, EXIT, UNKNOWN }
+
+    private const val MAX_SHIFT_MINUTES = 16 * 60
 }
 
 fun formatMinutes(minutes: Int): String {

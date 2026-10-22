@@ -72,6 +72,16 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 ### 1.8 Git
 - Commits do dia no `main` (seção 5), tag `v0.5.0` no commit `49d66b6`. Árvore local sincronizada com o remote.
 
+### 1.9 Turno noturno zerado no celular (pós-release)
+- Caso real: turno 22:45 → 06:55 do dia seguinte. No celular (Galaxy S25, Android 17), a Outubro mostrava 0h e "Revisar" em todos os dias.
+- Causa 1 (dados): comprovantes restaurados do backup têm só `workTime` (ex.: "Horário 22:43") e **sem tipo** (entrada ou saída). Sem tipo, o app marca como pendente e soma 0.
+- Causa 2 (lógica): o cálculo pareava entrada e saída só dentro do mesmo dia, pela hora do dia. Turno que cruza a meia-noite nunca era pareado, mesmo com tipo definido.
+- Correção no código: pareamento cronológico entre dias (`WorkStatsCalculator.pairPunches`). A duração vai para o dia da entrada. Entrada sem saída em até 16h fica pendente. Saída sem entrada fica pendente.
+- Testes novos (5): turno que cruza a meia-noite, sequência de turnos noturnos, saída sem entrada, entrada sem saída, horário sem tipo. Todos os 16 testes da suíte passam (rodados com JUnit direto, ver P1).
+- APK `github` com a correção instalado no celular por cima da 0.5.0 (mesma assinatura; dados preservados: 12 comprovantes).
+- **Pendente:** classificar os comprovantes no celular (Editar → "Só entrada" ou "Só saída"). Sem isso, o app continua pendente, mesmo com a lógica corrigida.
+- **Pendente:** publicar a correção como release (`v0.5.1`), depois da validação no celular.
+
 ---
 
 ## 2. Estado atual do código
@@ -157,7 +167,7 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 
 | # | Problema | Impacto | Ação |
 |---|---|---|---|
-| P1 | Testes unitários não rodam neste PC: o executor do Gradle falha porque o `JAVA_HOME` tem espaço (`C:\Program Files\...`). Compilação funciona. | Não dá para validar testes localmente | Mover o JDK para caminho sem espaço, ou rodar pelo Android Studio. O CI roda os testes |
+| P1 | Testes unitários não rodam pelo Gradle neste PC: o executor falha porque o `JAVA_HOME` tem espaço (`C:\Program Files\...`). Compilação funciona. | Não dá para validar testes pelo Gradle localmente | **Contornado**: `:app:compilePlayDebugUnitTestKotlin` + JUnit direto com `java -cp <classes>;junit;hamcrest;kotlin-stdlib org.junit.runner.JUnitCore <classe>`. Definitivo: mover o JDK ou rodar no CI |
 | P2 | Lint e testes unitários só rodaram no CI (run da tag). Lint local não foi executado | Falhas de lint só aparecem no CI | Rodar `lintPlayDebug` e `lintGithubDebug` localmente |
 | P3 | Release `v0.4.0` continua pública, é APK debug e debuggable | Exposição de build de teste e confusão para o usuário | Marcar como pré-release ou remover (decisão sua) |
 | P4 | ~~Não existe `v0.5.0`~~ | — | **Resolvido**: `v0.5.0` publicada (seção 3.0) |
@@ -172,6 +182,8 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 | P13 | Teste de rede do updater no WSA inconclusivo (`wget` sem resposta; mensagem não capturada) | Não confirmado que o updater alcança o GitHub a partir do dispositivo de teste | Testar no celular |
 | P14 | Updater não pode ser testado de ponta a ponta com `v0.5.0` (é a versão mais recente) | Fluxo "baixar e instalar" só se prova com versão maior | Publicar `v0.5.1` de teste depois da migração |
 | P15 | Setup Java v4 e `ubuntu-latest` com avisos de depreciação | Pode quebrar em breve | Atualizar `setup-java` para v5 e fixar `ubuntu-24.04` |
+| P16 | Turno noturno sem pareamento entre dias e comprovantes restaurados sem tipo (entrada/saída) | Horas zeradas para quem trabalha à noite (ver 1.9) | **Lógica corrigida** (local). Classificar comprovantes no celular e publicar `v0.5.1` |
+| P17 | Updater: instalação falha com assinatura diferente, e o erro aparece só depois do Play Protect | Usuário sem clareza sobre a migração | Mostrar mensagem de assinatura diferente antes de abrir o instalador (melhoria no updater) |
 
 ---
 
@@ -187,6 +199,12 @@ Motivo: o celular tem APK com assinatura antiga. Sem a migração, nenhuma atual
 5. Abrir o app → Backup → **Restaurar backup** → escolher o ZIP → digitar a senha.
 6. Conferir a quantidade de comprovantes e as horas.
 7. Em Sobre → "Buscar atualizações agora": deve dizer que está na versão mais recente (`v0.5.0`). Isso confirma o acesso ao GitHub.
+
+### 7.1b Classificar comprovantes do turno noturno (no celular)
+1. Abrir o comprovante (toque no card) → **Editar**.
+2. Escolher **"Só entrada"** para os horários de início (ex.: 22:43) e **"Só saída"** para os de fim (ex.: 07:00 ou 06:57).
+3. Confirmar e salvar. O app passa a parear entrada e saída entre dias.
+4. Conferir se o dia da entrada mostra as horas (ex.: 22/10 → 8h17).
 
 ### 7.2 Depois da migração
 1. Testar no celular: scanner, galeria com OCR, edição, PDF individual e em lote, backup com e sem senha, restore, tema claro e escuro.

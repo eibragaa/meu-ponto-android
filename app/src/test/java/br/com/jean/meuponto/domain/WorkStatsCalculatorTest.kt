@@ -70,6 +70,71 @@ class WorkStatsCalculatorTest {
     }
 
     @Test
+    fun `pareia entrada e saida de turno que cruza a meia-noite`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "21/10/2026", entry = "22:42"),
+                receipt(date = "22/10/2026", exit = "06:57")
+            )
+        )
+
+        assertEquals(495, days.getValue("21/10/2026").minutes)
+        assertFalse(days.getValue("21/10/2026").pending)
+        assertFalse(days.getValue("22/10/2026").pending)
+    }
+
+    @Test
+    fun `pareia sequencia de turnos noturnos separados por comprovante`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "21/10/2026", entry = "22:42"),
+                receipt(date = "22/10/2026", exit = "06:57"),
+                receipt(date = "22/10/2026", entry = "22:43"),
+                receipt(date = "23/10/2026", exit = "07:00")
+            )
+        )
+
+        assertEquals(495, days.getValue("21/10/2026").minutes)
+        assertEquals(497, days.getValue("22/10/2026").minutes)
+        assertEquals(0, days.getValue("23/10/2026").minutes)
+        assertFalse(days.getValue("23/10/2026").pending)
+    }
+
+    @Test
+    fun `saida sem entrada anterior fica pendente`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(date = "22/10/2026", exit = "06:57"))
+        )
+
+        assertEquals(0, days.getValue("22/10/2026").minutes)
+        assertTrue(days.getValue("22/10/2026").pending)
+    }
+
+    @Test
+    fun `entrada sem saida em ate 16 horas fica pendente`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "21/10/2026", entry = "08:00"),
+                receipt(date = "22/10/2026", exit = "09:00")
+            )
+        )
+
+        assertEquals(0, days.getValue("21/10/2026").minutes)
+        assertTrue(days.getValue("21/10/2026").pending)
+        assertTrue(days.getValue("22/10/2026").pending)
+    }
+
+    @Test
+    fun `horario sem tipo fica pendente`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(date = "22/10/2026", workTime = "22:43"))
+        )
+
+        assertEquals(0, days.getValue("22/10/2026").minutes)
+        assertTrue(days.getValue("22/10/2026").pending)
+    }
+
+    @Test
     fun `calcula varios pares de batidas`() {
         val days = WorkStatsCalculator.dayStats(
             listOf(
