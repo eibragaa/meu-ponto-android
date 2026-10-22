@@ -1,0 +1,175 @@
+package br.com.jean.meuponto.domain
+
+import br.com.jean.meuponto.data.Receipt
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.LocalDate
+
+class WorkStatsCalculatorTest {
+
+    private fun receipt(
+        date: String = "22/10/2026",
+        entry: String? = null,
+        exit: String? = null,
+        workTime: String = "",
+        needsReview: Boolean = false
+    ) = Receipt(
+        capturedAt = 0L,
+        workDate = date,
+        workTime = workTime,
+        imagePath = "",
+        recognizedText = "",
+        entryTime = entry,
+        exitTime = exit,
+        needsReview = needsReview
+    )
+
+    @Test
+    fun `calcula horas de entrada e saida no mesmo comprovante`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00", exit = "17:00"))
+        )
+
+        assertEquals(540, days.getValue("22/10/2026").minutes)
+        assertFalse(days.getValue("22/10/2026").pending)
+    }
+
+    @Test
+    fun `calcula horas de comprovantes separados no mesmo dia`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(entry = "08:00"),
+                receipt(exit = "17:00")
+            )
+        )
+
+        assertEquals(540, days.getValue("22/10/2026").minutes)
+        assertFalse(days.getValue("22/10/2026").pending)
+    }
+
+    @Test
+    fun `marca batida unica como pendente`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00"))
+        )
+
+        assertEquals(0, days.getValue("22/10/2026").minutes)
+        assertTrue(days.getValue("22/10/2026").pending)
+    }
+
+    @Test
+    fun `calcula jornada noturna no mesmo comprovante`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "22:00", exit = "06:00"))
+        )
+
+        assertEquals(480, days.getValue("22/10/2026").minutes)
+    }
+
+    @Test
+    fun `calcula varios pares de batidas`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(entry = "08:00"),
+                receipt(exit = "12:00"),
+                receipt(entry = "13:00"),
+                receipt(exit = "17:00")
+            )
+        )
+
+        assertEquals(480, days.getValue("22/10/2026").minutes)
+    }
+
+    @Test
+    fun `data vazia fica no grupo de revisao`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(date = "", entry = "08:00", needsReview = true))
+        )
+
+        assertTrue(days.getValue("revisar").pending)
+    }
+
+    @Test
+    fun `resumo do periodo calcula total e dias restantes`() {
+        val settings = PayrollSettings(
+            periodStart = LocalDate.of(2026, 10, 1),
+            periodEnd = LocalDate.of(2026, 10, 31)
+        )
+        val receipts = listOf(
+            receipt(date = "22/10/2026", entry = "08:00", exit = "17:00"),
+            receipt(date = "21/10/2026", entry = "09:00", exit = "17:00")
+        )
+
+        val stats = WorkStatsCalculator.periodStats(
+            receipts = receipts,
+            settings = settings,
+            today = LocalDate.of(2026, 10, 22)
+        )
+
+        assertEquals(1020, stats.totalMinutes)
+        assertEquals(2, stats.daysWithRecords)
+        assertEquals(9, stats.daysRemaining)
+        assertEquals(0, stats.incompleteDays)
+    }
+
+    @Test
+    fun `resumo ignora comprovante fora do periodo`() {
+        val settings = PayrollSettings(
+            periodStart = LocalDate.of(2026, 10, 1),
+            periodEnd = LocalDate.of(2026, 10, 31)
+        )
+        val receipts = listOf(
+            receipt(date = "30/09/2026", entry = "08:00", exit = "17:00"),
+            receipt(date = "22/10/2026", entry = "08:00", exit = "17:00")
+        )
+
+        val stats = WorkStatsCalculator.periodStats(
+            receipts = receipts,
+            settings = settings,
+            today = LocalDate.of(2026, 10, 22)
+        )
+
+        assertEquals(540, stats.totalMinutes)
+    }
+
+    @Test
+    fun `conta dias uteis sem registro e saldo esperado`() {
+        val settings = PayrollSettings(
+            periodStart = LocalDate.of(2026, 10, 19),
+            periodEnd = LocalDate.of(2026, 10, 31),
+            expectedDailyMinutes = 8 * 60
+        )
+        val receipts = listOf(
+            receipt(date = "21/10/2026", entry = "08:00", exit = "17:00"),
+            receipt(date = "22/10/2026", entry = "09:00", exit = "17:00")
+        )
+
+        val stats = WorkStatsCalculator.periodStats(
+            receipts = receipts,
+            settings = settings,
+            today = LocalDate.of(2026, 10, 22)
+        )
+
+        assertEquals(2, stats.missingWorkdays)
+        assertEquals(1020 - (8 * 60 * 4), stats.expectedBalanceMinutes)
+    }
+
+    @Test
+    fun `normaliza data e hora do OCR`() {
+        assertEquals("22/10/2026", WorkStatsCalculator.normalizeWorkDate("Data: 22-10-2026"))
+        assertEquals("10:20", WorkStatsCalculator.normalizeClockTime("Hora 10:20"))
+        assertNull(WorkStatsCalculator.normalizeWorkDate("sem data"))
+        assertNull(WorkStatsCalculator.normalizeClockTime("sem hora"))
+    }
+
+    @Test
+    fun `formata minutos`() {
+        assertEquals("0h", formatMinutes(0))
+        assertEquals("45min", formatMinutes(45))
+        assertEquals("8h", formatMinutes(480))
+        assertEquals("8h05", formatMinutes(485))
+    }
+}
