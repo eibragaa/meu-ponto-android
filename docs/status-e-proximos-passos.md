@@ -86,7 +86,18 @@ Mudanças já existentes no projeto ao iniciar esta rodada, que implementam part
 - Alias: `meuponto-release`. SHA-256 do certificado: `4E:F4:64:D5:F9:EC:8E:6C:15:6A:48:26:FB:2A:0C:0F:BA:34:4C:7B:15:CD:C7:E7:6A:55:C8:CD:C2:BB:36:83`.
 - Secrets no GitHub cadastrados: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
 - Validado: `assembleGithubRelease` local assinado com este certificado.
-- **Pendente:** o celular ainda tem APK com outra assinatura. A migração (backup pelo app, desinstalar, reinstalar) não foi feita. O workflow ainda precisa de correção (ver P11).
+- Validado: `bundlePlayRelease` local assinado com este certificado (`bundle/playRelease/app-play-release.aab`).
+- **WSA migrado (22/10):** `br.com.jean.meuponto` desinstalado e reinstalado com o APK `github` assinado pelo keystore novo. Abre sem crash, versão 0.5.0.
+- **Celular pendente:** ainda tem APK com outra assinatura (ver passo a passo na seção 7).
+
+### 3.2 Workflow de release corrigido (22/10)
+- Tag precisa de todos os Secrets de assinatura (falha cedo se faltar).
+- Tag precisa bater com `versionName` em `app/build.gradle.kts`.
+- Build assinado da flavor `github` (`assembleGithubRelease`) é o APK publicado na release, com nome `Meu-Ponto-<tag>.apk`.
+- AAB da flavor `play` é anexado à release quando os Secrets existem.
+- APK debug não é mais publicado.
+- YAML validado. Caminhos conferidos com build local.
+- Ainda **não** foi executado no GitHub: só ao criar a tag `v0.5.0`.
 
 ## 4. Política de privacidade (`docs/privacy-policy.md`)
 
@@ -127,15 +138,28 @@ Ver `git log` no remote. Grupos:
 | P8 | Política com termos incorretos (seção 4) | Risco de reprovação ou de informação errada | Revisar antes de publicar |
 | P9 | Período de folha alterado no WSA sem ação registrada | Dúvida sobre dados de teste | Confirmar com o usuário |
 | P10 | Updater não identifica o celular atual | Não sabemos a versão instalada no celular | Informar a versão do app no celular |
-| P11 | Workflow de release quebrado: caminhos antigos (`apk/debug`, `bundle/release`) e não gera o APK da `github` | Nova release não tem APK para o updater | Corrigir workflow (aguardando confirmação) |
-| P12 | Releases anteriores assinadas com certificados debug diferentes (`v0.3.3` = `8f347d…`, `v0.4.0` = `2aa251…`) | Update por cima entre releases do CI falha | Usar o keystore fixo (seção 3.1) |
+| P11 | ~~Workflow de release quebrado~~ | — | **Resolvido** (seção 3.2). Falta testar no GitHub com tag |
+| P12 | Releases anteriores assinadas com certificados debug diferentes (`v0.3.3` = `8f347d…`, `v0.4.0` = `2aa251…`) | Update por cima entre releases do CI falha | Keystore fixo criado (seção 3.1). **Mitigado** no WSA; falta o celular |
+| P13 | Teste de rede do updater no WSA inconclusivo (`wget` sem resposta; snackbar não capturado) | Não confirmado que o updater alcança o GitHub a partir do WSA | Testar no celular ou após criar `v0.5.0` |
 
 ---
 
 ## 7. Próximos passos
 
+### Migração do celular (passo a passo, fazer uma vez)
+Motivo: o celular tem APK com assinatura antiga. Sem a migração, nenhuma atualização pelo GitHub instala.
+
+1. No app atual do celular: **Backup** (ícone de nuvem no topo) → criar backup **com senha** → salvar o ZIP em um lugar seguro (Drive ou PC).
+2. Confirmar que o ZIP abre e que a senha está anotada.
+3. Desinstalar o Meu Ponto do celular.
+4. Instalar o APK assinado com o keystore novo. Opção A: esperar a release `v0.5.0`. Opção B: APK gerado localmente (`assembleGithubRelease`) enviado por USB/adb.
+5. Abrir o app → Backup → **Restaurar backup** → escolher o ZIP → digitar a senha.
+6. Conferir a quantidade de comprovantes e as horas.
+7. Em Sobre → "Buscar atualizações agora": deve dizer que está na versão mais recente. Isso confirma o updater.
+
 ### Agora (prioridade alta)
-1. **Testar no celular real** com o release local: scanner, galeria com OCR, edição, PDF individual e em lote, backup com e sem senha, restore, tema claro e escuro.
+1. **Migrar o celular** (passo a passo acima).
+2. **Testar no celular real** com o release: scanner, galeria com OCR, edição, PDF individual e em lote, backup com e sem senha, restore, tema claro e escuro.
 2. **Diagnosticar o updater no celular:** informar a versão instalada e se é a build da `github`.
 3. **Revisar a política de privacidade** (seção 4) com as correções apontadas.
 4. **Decidir sobre o release `v0.4.0`** (P3) e quando publicar a `v0.5.0` (P4).
