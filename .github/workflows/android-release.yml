@@ -27,31 +27,35 @@ jobs:
           java-version: '17'
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Run unit tests
+        run: ./gradlew :app:testPlayDebugUnitTest :app:testGithubDebugUnitTest --no-daemon
+      - name: Run lint
+        run: ./gradlew :app:lintPlayDebug :app:lintGithubDebug :app:lintPlayRelease --no-daemon
       - name: Prepare release keystore
         if: env.ANDROID_KEYSTORE_BASE64 != ''
         shell: bash
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/meu-ponto-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/meu-ponto-release.jks" >> "$GITHUB_ENV"
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon
-      - name: Build signed release bundle
+      - name: Build play debug APK
+        run: ./gradlew :app:assemblePlayDebug --no-daemon
+      - name: Build signed play release bundle
         if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != ''
-        run: ./gradlew :app:bundleRelease --no-daemon
+        run: ./gradlew :app:bundlePlayRelease --no-daemon
       - name: Give APK a product filename
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/Meu-Ponto-${GITHUB_REF_NAME}.apk"
+        run: cp app/build/outputs/apk/play/debug/app-play-debug.apk "app/build/outputs/apk/play/debug/Meu-Ponto-${GITHUB_REF_NAME}.apk"
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: meu-ponto-apk
-          path: app/build/outputs/apk/debug/Meu-Ponto-*.apk
+          path: app/build/outputs/apk/play/debug/Meu-Ponto-*.apk
       - name: Upload signed AAB artifact
         if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != ''
         uses: actions/upload-artifact@v4
         with:
           name: meu-ponto-aab
-          path: app/build/outputs/bundle/release/app-release.aab
+          path: app/build/outputs/bundle/playRelease/app-play-release.aab
       - name: Publish GitHub Release when tag is pushed
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
