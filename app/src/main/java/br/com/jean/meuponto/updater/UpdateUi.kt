@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.TaskAlt
@@ -48,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.Locale
+
+const val PRIVACY_POLICY_URL =
+    "https://github.com/${AppUpdater.GITHUB_OWNER}/${AppUpdater.GITHUB_REPO}/blob/main/docs/privacy-policy.md"
 
 private fun formatFileSize(bytes: Long): String {
     if (bytes <= 0) return "0 MB"
@@ -328,6 +332,7 @@ fun UpdateDialog(
 fun AboutSheet(
     currentVersion: String,
     isCheckingUpdate: Boolean,
+    updaterEnabled: Boolean,
     onCheckUpdate: () -> Unit,
     onDismiss: () -> Unit,
     brandMark: @Composable () -> Unit
@@ -393,28 +398,74 @@ fun AboutSheet(
                 }
             }
 
-            Button(
-                onClick = onCheckUpdate,
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "Este app não é registro oficial de ponto nem substitui o controle adotado pelo empregador. O OCR pode errar: revise data e horário antes de usar qualquer informação.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            OutlinedButton(
+                onClick = {
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse(PRIVACY_POLICY_URL)
+                    )
+                    context.startActivity(intent)
+                },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isCheckingUpdate,
                 shape = RoundedCornerShape(16.dp)
             ) {
-                if (isCheckingUpdate) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Buscando atualizações...")
-                } else {
-                    Icon(
-                        Icons.Outlined.SystemUpdate,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Buscar atualizações agora")
+                Icon(
+                    Icons.Outlined.OpenInBrowser,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Política de privacidade")
+            }
+
+            if (updaterEnabled) {
+                Button(
+                    onClick = onCheckUpdate,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isCheckingUpdate,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    if (isCheckingUpdate) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Buscando atualizações...")
+                    } else {
+                        Icon(
+                            Icons.Outlined.SystemUpdate,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Buscar atualizações agora")
+                    }
                 }
             }
 

@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.graphics.RectF
 import android.net.Uri
@@ -16,9 +19,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,16 +42,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.DarkMode
@@ -59,12 +70,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -105,6 +118,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -114,6 +128,16 @@ import androidx.core.view.WindowCompat
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.data.ReceiptDao
+import br.com.jean.meuponto.BuildConfig
+import br.com.jean.meuponto.domain.PayrollSettings
+import br.com.jean.meuponto.domain.PayrollSettingsStore
+import br.com.jean.meuponto.domain.PeriodStats
+import br.com.jean.meuponto.domain.WorkDayStats
+import br.com.jean.meuponto.domain.WorkStatsCalculator
+import br.com.jean.meuponto.domain.formatMinutes
+import br.com.jean.meuponto.ui.InsightsSheet
+import br.com.jean.meuponto.ui.PayrollSettingsSheet
+import br.com.jean.meuponto.ui.ReceiptViewer
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -128,6 +152,9 @@ import java.io.File
 import java.io.BufferedOutputStream
 import java.io.BufferedInputStream
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -166,18 +193,128 @@ private val filters = listOf(
 )
 
 private val groupModes = listOf(
-    FilterOption("none", "Sem agrupar"),
+    FilterOption("month", "Mês"),
     FilterOption("day", "Dia"),
-    FilterOption("week", "Semana")
+    FilterOption("week", "Semana"),
+    FilterOption("none", "Lista")
+)
+
+private val punchModes = listOf(
+    FilterOption("both", "Entrada e saída"),
+    FilterOption("entry", "Só entrada"),
+    FilterOption("exit", "Só saída"),
+    FilterOption("none", "Sem horário")
 )
 
 private data class ReceiptGroup(val title: String, val receipts: List<Receipt>)
+
+private data class DaySection(
+    val key: String,
+    val title: String,
+    val receipts: List<Receipt>,
+    val minutes: Int,
+    val receiptCount: Int,
+    val pending: Boolean
+)
+
+private data class MonthSection(
+    val key: String,
+    val title: String,
+    val days: List<DaySection>,
+    val receiptCount: Int,
+    val minutes: Int
+)
+
+private val monthTitleFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", PtBrLocale)
+private val dayTitleFormatter = DateTimeFormatter.ofPattern("dd/MM · EEEE", PtBrLocale)
+
+private fun monthKey(workDate: String): String =
+    WorkStatsCalculator.parseWorkDate(workDate)
+        ?.format(DateTimeFormatter.ofPattern("yyyy-MM"))
+        ?: "revisar"
+
+private fun monthTitle(key: String): String {
+    if (key == "revisar") return "Precisa de revisão"
+    val date = runCatching { LocalDate.parse("$key-01") }.getOrNull() ?: return "Período"
+    return date.format(monthTitleFormatter).replaceFirstChar { it.toString().uppercase(PtBrLocale) }
+}
+
+private fun dayTitle(key: String): String {
+    if (key == "revisar") return "Data pendente"
+    val date = WorkStatsCalculator.parseWorkDate(key) ?: return "Data a revisar"
+    return date.format(dayTitleFormatter).replaceFirstChar { it.toString().uppercase(PtBrLocale) }
+}
+
+private fun currentMonthKey(): String =
+    LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM"))
+
+private fun buildMonthSections(
+    receipts: List<Receipt>,
+    dayStats: Map<String, WorkDayStats>
+): List<MonthSection> {
+    return receipts
+        .groupBy { monthKey(it.workDate) }
+        .map { (key, items) ->
+            val days = items
+                .groupBy { it.workDate.ifBlank { "revisar" } }
+                .map { (dayKey, dayReceipts) ->
+                    val dayStat = dayStats[dayKey]
+                    DaySection(
+                        key = dayKey,
+                        title = dayTitle(dayKey),
+                        receipts = dayReceipts,
+                        minutes = dayStat?.minutes ?: 0,
+                        receiptCount = dayStat?.receiptCount ?: dayReceipts.size,
+                        pending = dayStat?.pending ?: dayReceipts.any { it.needsReview }
+                    )
+                }
+                .sortedWith(
+                    compareBy<DaySection> { if (it.key == "revisar") 0 else 1 }
+                        .thenByDescending { it.key }
+                )
+            MonthSection(
+                key = key,
+                title = monthTitle(key),
+                days = days,
+                receiptCount = items.size,
+                minutes = days.sumOf { it.minutes }
+            )
+        }
+        .sortedWith(
+            compareBy<MonthSection> { if (it.key == "revisar") 0 else 1 }
+                .thenByDescending { it.key }
+        )
+}
+
+private fun isValidWorkDate(value: String): Boolean =
+    WorkStatsCalculator.parseWorkDate(value) != null
+
+private fun formatDateInput(value: String): String {
+    val digits = value.filter { it.isDigit() }.take(8)
+    val parts = listOf(digits.take(2), digits.drop(2).take(2), digits.drop(4).take(4))
+        .filter { it.isNotEmpty() }
+    return parts.joinToString("/")
+}
+
+private fun formatTimeInput(value: String): String {
+    val digits = value.filter { it.isDigit() }.take(4)
+    return if (digits.length > 2) "${digits.take(2)}:${digits.drop(2)}" else digits
+}
+
+private fun receiptTimeLabel(receipt: Receipt): String = when {
+    !receipt.entryTime.isNullOrBlank() && !receipt.exitTime.isNullOrBlank() ->
+        "Entrada ${receipt.entryTime} · Saída ${receipt.exitTime}"
+    !receipt.entryTime.isNullOrBlank() -> "Entrada ${receipt.entryTime} · saída pendente"
+    !receipt.exitTime.isNullOrBlank() -> "Saída ${receipt.exitTime} · entrada pendente"
+    receipt.workTime.isNotBlank() -> "Horário ${receipt.workTime}"
+    else -> "Horário pendente"
+}
 
 private fun groupReceipts(receipts: List<Receipt>, mode: String): List<ReceiptGroup> {
     if (mode == "none") return listOf(ReceiptGroup("", receipts))
     return receipts.groupBy { receipt ->
         when (mode) {
-            "day" -> receipt.workDate
+            "day" -> receipt.workDate.ifBlank { "Data pendente" }
             "week" -> weekLabel(receipt.workDate)
             else -> ""
         }
@@ -247,17 +384,25 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val snackbarHostState = remember { SnackbarHostState() }
     var query by rememberSaveable { mutableStateOf("") }
     var selectedFilter by rememberSaveable { mutableStateOf("all") }
-    var selectedGroupMode by rememberSaveable { mutableStateOf("none") }
+    var selectedGroupMode by rememberSaveable { mutableStateOf("month") }
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
     var showOrganizeSheet by rememberSaveable { mutableStateOf(false) }
+    var showPayrollSettings by rememberSaveable { mutableStateOf(false) }
+    var showInsights by rememberSaveable { mutableStateOf(false) }
     var backupPasswordDialog by rememberSaveable { mutableStateOf<String?>(null) }
     var receiptBeingEdited by remember { mutableStateOf<Receipt?>(null) }
+    var receiptBeingViewed by remember { mutableStateOf<Receipt?>(null) }
+    var receiptPendingDelete by remember { mutableStateOf<Receipt?>(null) }
+    var payrollSettings by remember { mutableStateOf(PayrollSettingsStore.load(context)) }
+    var expandedMonths by remember { mutableStateOf(setOf(currentMonthKey())) }
+    var expandedDays by remember { mutableStateOf(emptySet<String>()) }
     var isProcessing by remember { mutableStateOf(false) }
     var isBackupProcessing by remember { mutableStateOf(false) }
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     var selectedReceiptIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var pendingBackupPassword by remember { mutableStateOf("") }
+    val updaterEnabled = BuildConfig.UPDATER_ENABLED
     val currentVersion = remember { AppUpdater.getInstalledVersionName(context) }
     var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
     var showUpdateDialog by rememberSaveable { mutableStateOf(false) }
@@ -266,7 +411,8 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var hasCheckedAutoUpdate by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        if (!hasCheckedAutoUpdate) {
+        cleanupUpdateAndPdfCaches(context)
+        if (updaterEnabled && !hasCheckedAutoUpdate) {
             hasCheckedAutoUpdate = true
             val update = AppUpdater.checkForUpdates(currentVersion).getOrNull()
             if (update != null) {
@@ -284,12 +430,23 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 val today = SimpleDateFormat("dd/MM/yyyy", PtBrLocale).format(Date())
                 receipts.filter { it.workDate == today }
             }
-            "time" -> receipts.filter { it.workTime.isNotBlank() }
+            "time" -> receipts.filter {
+                it.workTime.isNotBlank() || it.entryTime != null || it.exitTime != null
+            }
             else -> receipts
         }
     }
+    val visibleDayStats = remember(visibleReceipts) {
+        WorkStatsCalculator.dayStats(visibleReceipts)
+    }
+    val periodStats = remember(receipts, payrollSettings) {
+        WorkStatsCalculator.periodStats(receipts, payrollSettings)
+    }
     val groupedReceipts = remember(visibleReceipts, selectedGroupMode) {
         groupReceipts(visibleReceipts, selectedGroupMode)
+    }
+    val monthSections = remember(visibleReceipts, visibleDayStats) {
+        buildMonthSections(visibleReceipts, visibleDayStats)
     }
 
     fun showMessage(message: String) {
@@ -430,7 +587,16 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item { Header(isDarkTheme = isDarkTheme, onThemeClick = onToggleTheme, onBackupClick = { showBackupSheet = true }, onAboutClick = { showAboutSheet = true }) }
-            item { SummaryCard(total = receipts.size, isProcessing = isProcessing, isDarkTheme = isDarkTheme) }
+            item {
+                SummaryCard(
+                    total = receipts.size,
+                    stats = periodStats,
+                    isProcessing = isProcessing,
+                    isDarkTheme = isDarkTheme,
+                    onConfigure = { showPayrollSettings = true },
+                    onInsights = { showInsights = true }
+                )
+            }
             item { SearchField(query = query, onQueryChange = { query = it }) }
             item {
                 OrganizeBar(
@@ -459,6 +625,60 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             }
             if (visibleReceipts.isEmpty()) {
                 item { EmptyState(onAdd = { showAddSheet = true }, isSearch = query.isNotBlank()) }
+            } else if (selectedGroupMode == "month") {
+                monthSections.forEach { month ->
+                    val monthExpanded = query.isNotBlank() || expandedMonths.contains(month.key)
+                    item(key = "month-${month.key}") {
+                        MonthHeader(
+                            month = month,
+                            expanded = monthExpanded,
+                            onToggle = {
+                                expandedMonths = if (expandedMonths.contains(month.key)) {
+                                    expandedMonths - month.key
+                                } else {
+                                    expandedMonths + month.key
+                                }
+                            }
+                        )
+                    }
+                    if (monthExpanded) {
+                        month.days.forEach { day ->
+                            val dayExpanded = query.isNotBlank() || expandedDays.contains(day.key)
+                            item(key = "day-${day.key}") {
+                                DayHeader(
+                                    day = day,
+                                    expanded = dayExpanded,
+                                    onToggle = {
+                                        expandedDays = if (expandedDays.contains(day.key)) {
+                                            expandedDays - day.key
+                                        } else {
+                                            expandedDays + day.key
+                                        }
+                                    }
+                                )
+                            }
+                            if (dayExpanded) {
+                                items(day.receipts, key = { it.id }) { receipt ->
+                                    ReceiptCard(
+                                        receipt = receipt,
+                                        isSelectionMode = isSelectionMode,
+                                        isSelected = receipt.id in selectedReceiptIds,
+                                        onToggleSelection = {
+                                            selectedReceiptIds = if (receipt.id in selectedReceiptIds) {
+                                                selectedReceiptIds - receipt.id
+                                            } else {
+                                                selectedReceiptIds + receipt.id
+                                            }
+                                        },
+                                        onOpen = { receiptBeingViewed = receipt },
+                                        onEdit = { receiptBeingEdited = receipt },
+                                        onShare = { shareAsPdf(context, listOf(receipt)) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 groupedReceipts.forEachIndexed { groupIndex, group ->
                     if (selectedGroupMode != "none") {
@@ -478,13 +698,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                                     selectedReceiptIds + receipt.id
                                 }
                             },
+                            onOpen = { receiptBeingViewed = receipt },
                             onEdit = { receiptBeingEdited = receipt },
                             onShare = { shareAsPdf(context, listOf(receipt)) }
                         )
                     }
                 }
             }
-            item { TrustFooter(versionName = currentVersion, onCheckUpdate = { checkUpdatesManually() }) }
+            item { TrustFooter(versionName = currentVersion, updaterEnabled = updaterEnabled, onCheckUpdate = { checkUpdatesManually() }) }
         }
     }
 
@@ -518,6 +739,21 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             onDismiss = { showOrganizeSheet = false }
         )
     }
+    if (showPayrollSettings) {
+        PayrollSettingsSheet(
+            settings = payrollSettings,
+            onDismiss = { showPayrollSettings = false },
+            onSave = { settings ->
+                PayrollSettingsStore.save(context, settings)
+                payrollSettings = settings
+                showPayrollSettings = false
+                showMessage("Período de folha atualizado.")
+            }
+        )
+    }
+    if (showInsights) {
+        InsightsSheet(stats = periodStats, onDismiss = { showInsights = false })
+    }
     backupPasswordDialog?.let { action ->
         BackupPasswordDialog(
             action = action,
@@ -538,12 +774,67 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         EditReceiptSheet(
             receipt = receipt,
             onDismiss = { receiptBeingEdited = null },
-            onSave = { workDate, workTime ->
+            onSave = { workDate, entryTime, exitTime ->
                 scope.launch {
-                    dao.updateDateAndTime(receipt.id, workDate, workTime)
+                    dao.updateReceiptDetails(
+                        id = receipt.id,
+                        workDate = workDate,
+                        workTime = entryTime ?: exitTime ?: "",
+                        entryTime = entryTime,
+                        exitTime = exitTime,
+                        needsReview = false
+                    )
                     receiptBeingEdited = null
                     showMessage("Comprovante atualizado.")
                 }
+            }
+        )
+    }
+
+    receiptBeingViewed?.let { receipt ->
+        val viewerIndex = visibleReceipts.indexOfFirst { it.id == receipt.id }
+        ReceiptViewer(
+            receipt = receipt,
+            hasPrevious = viewerIndex > 0,
+            hasNext = viewerIndex >= 0 && viewerIndex < visibleReceipts.lastIndex,
+            onPrevious = {
+                if (viewerIndex > 0) receiptBeingViewed = visibleReceipts[viewerIndex - 1]
+            },
+            onNext = {
+                if (viewerIndex >= 0 && viewerIndex < visibleReceipts.lastIndex) {
+                    receiptBeingViewed = visibleReceipts[viewerIndex + 1]
+                }
+            },
+            onEdit = {
+                receiptBeingViewed = null
+                receiptBeingEdited = receipt
+            },
+            onShare = { shareAsPdf(context, listOf(receipt)) },
+            onDelete = { receiptPendingDelete = receipt },
+            onClose = { receiptBeingViewed = null }
+        )
+    }
+
+    receiptPendingDelete?.let { receipt ->
+        AlertDialog(
+            onDismissRequest = { receiptPendingDelete = null },
+            title = { Text("Excluir comprovante?") },
+            text = { Text("O comprovante e a imagem serão removidos deste aparelho.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            dao.delete(receipt.id)
+                            runCatching { File(receipt.imagePath).delete() }
+                            receiptPendingDelete = null
+                            if (receiptBeingViewed?.id == receipt.id) receiptBeingViewed = null
+                            showMessage("Comprovante excluído.")
+                        }
+                    }
+                ) { Text("Excluir") }
+            },
+            dismissButton = {
+                TextButton(onClick = { receiptPendingDelete = null }) { Text("Cancelar") }
             }
         )
     }
@@ -562,6 +853,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         AboutSheet(
             currentVersion = currentVersion,
             isCheckingUpdate = isCheckingUpdatesManually,
+            updaterEnabled = updaterEnabled,
             onCheckUpdate = { checkUpdatesManually() },
             onDismiss = { showAboutSheet = false },
             brandMark = { MeuPontoMark(Modifier.size(56.dp)) }
@@ -598,7 +890,14 @@ private fun Header(
 }
 
 @Composable
-private fun SummaryCard(total: Int, isProcessing: Boolean, isDarkTheme: Boolean) {
+private fun SummaryCard(
+    total: Int,
+    stats: PeriodStats,
+    isProcessing: Boolean,
+    isDarkTheme: Boolean,
+    onConfigure: () -> Unit,
+    onInsights: () -> Unit
+) {
     val heroGradient = if (isDarkTheme) {
         listOf(Color(0xFF14242C), Color(0xFF0D4C47))
     } else {
@@ -607,34 +906,89 @@ private fun SummaryCard(total: Int, isProcessing: Boolean, isDarkTheme: Boolean)
     val heroText = if (isDarkTheme) Color(0xFFF1F8F5) else Color.White
     val heroMuted = if (isDarkTheme) Color(0xFFB8CCC7) else Color.White.copy(alpha = .70f)
     val heroNumber = if (isDarkTheme) Color(0xFF8BE3D2) else Mint
-    val heroBadge = if (isDarkTheme) Color(0xFF103A38) else TealDark.copy(alpha = .75f)
+    val totalDays = ChronoUnit.DAYS.between(stats.periodStart, stats.periodEnd).toInt() + 1
+    val elapsedDays = (ChronoUnit.DAYS.between(stats.periodStart, LocalDate.now()).toInt() + 1)
+        .coerceIn(0, totalDays.coerceAtLeast(0))
+    val progress = if (totalDays > 0) elapsedDays.toFloat() / totalDays else 0f
+    val shortDate = DateTimeFormatter.ofPattern("dd/MM")
+    val periodLabel = "${stats.periodStart.format(shortDate)} a ${stats.periodEnd.format(shortDate)}"
+    val closingLabel = when {
+        LocalDate.now().isAfter(stats.periodEnd) -> "Período encerrado"
+        stats.daysRemaining == 0 -> "Fecha hoje"
+        else -> "Faltam ${stats.daysRemaining} dias para o fechamento"
+    }
+
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(heroGradient)).padding(22.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (isProcessing) "Organizando seu comprovante" else if (total == 0) "Seu arquivo começa aqui" else "Seu arquivo está em dia",
-                            color = heroText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold
+                            if (isProcessing) "Organizando seu comprovante" else if (total == 0) "Seu arquivo começa aqui" else "Resumo do período",
+                            color = heroText,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            if (isProcessing) "Lendo data e horário com OCR local…" else "Tudo que importa, em um só lugar.",
-                            color = heroMuted, style = MaterialTheme.typography.bodyMedium
+                            if (isProcessing) "Lendo data e horário com OCR local…" else periodLabel,
+                            color = heroMuted,
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                     Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Coral, modifier = Modifier.size(28.dp))
                 }
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(total.toString(), color = heroNumber, fontSize = 48.sp, fontWeight = FontWeight.Bold, lineHeight = 48.sp)
+                    Text(
+                        formatMinutes(stats.totalMinutes),
+                        color = heroNumber,
+                        fontSize = 42.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 44.sp
+                    )
                     Spacer(Modifier.width(10.dp))
-                    Text("comprovante${if (total == 1) "" else "s"}\nsalvo${if (total == 1) "" else "s"}", color = heroMuted, style = MaterialTheme.typography.labelLarge)
+                    Text("horas\ntrabalhadas", color = heroMuted, style = MaterialTheme.typography.labelLarge)
                 }
-                Surface(color = heroBadge, shape = RoundedCornerShape(12.dp)) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = Mint, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Backup exportável • pronto", color = heroText, style = MaterialTheme.typography.labelMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.CalendarMonth, contentDescription = null, tint = heroNumber, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text(closingLabel, color = heroText, style = MaterialTheme.typography.labelLarge)
+                }
+                LinearProgressIndicator(
+                    progress = { progress.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(8.dp)),
+                    color = heroNumber,
+                    trackColor = heroMuted.copy(alpha = .25f)
+                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${stats.daysWithRecords} dias com registro",
+                        color = heroMuted,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        "· ${stats.pendingReceipts} pendente${if (stats.pendingReceipts == 1) "" else "s"}",
+                        color = if (stats.pendingReceipts > 0) Coral else heroMuted,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = onConfigure,
+                        colors = ButtonDefaults.textButtonColors(contentColor = heroText)
+                    ) { Text("Configurar") }
+                    TextButton(
+                        onClick = onInsights,
+                        colors = ButtonDefaults.textButtonColors(contentColor = heroNumber)
+                    ) {
+                        Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Insights")
                     }
                 }
             }
@@ -780,6 +1134,88 @@ private fun SectionHeader(
 }
 
 @Composable
+private fun MonthHeader(
+    month: MonthSection,
+    expanded: Boolean,
+    onToggle: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    month.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "${month.receiptCount} comprovante${if (month.receiptCount == 1) "" else "s"} · ${formatMinutes(month.minutes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = if (expanded) "Recolher mês" else "Expandir mês",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun DayHeader(
+    day: DaySection,
+    expanded: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                day.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                "${day.receiptCount} comprovante${if (day.receiptCount == 1) "" else "s"} · ${formatMinutes(day.minutes)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (day.pending) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    "Revisar",
+                    Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        Icon(
+            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+            contentDescription = if (expanded) "Recolher dia" else "Expandir dia",
+            tint = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
 private fun GroupHeader(title: String) {
     Row(
         Modifier.fillMaxWidth().padding(top = 4.dp),
@@ -798,17 +1234,25 @@ private fun GroupHeader(title: String) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ReceiptCard(
     receipt: Receipt,
     isSelectionMode: Boolean,
     isSelected: Boolean,
     onToggleSelection: () -> Unit,
+    onOpen: () -> Unit,
     onEdit: () -> Unit,
     onShare: () -> Unit
 ) {
+    val duration = WorkStatsCalculator.durationMinutes(receipt)
     Card(
-        Modifier.fillMaxWidth().clickable(enabled = isSelectionMode, onClick = onToggleSelection),
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { if (isSelectionMode) onToggleSelection() else onOpen() },
+                onLongClick = { if (!isSelectionMode) onToggleSelection() }
+            ),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -817,15 +1261,58 @@ private fun ReceiptCard(
             ReceiptThumbnail(receipt.imagePath)
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(receipt.workDate, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                Text(if (receipt.workTime.isBlank()) "Horário pendente de revisão" else "Horário identificado • ${receipt.workTime}", style = MaterialTheme.typography.bodySmall, color = if (receipt.workTime.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(File(receipt.imagePath).name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    receipt.workDate.ifBlank { "Data pendente" },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        receiptTimeLabel(receipt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when {
+                            receipt.needsReview -> MaterialTheme.colorScheme.error
+                            receipt.entryTime == null && receipt.exitTime == null && receipt.workTime.isBlank() ->
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            else -> MaterialTheme.colorScheme.primary
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (duration != null) {
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                formatMinutes(duration),
+                                Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+                Text(
+                    if (receipt.needsReview) "Revisar data/horário" else File(receipt.imagePath).name,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (receipt.needsReview) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             if (isSelectionMode) {
                 androidx.compose.material3.Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
             } else {
-                IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, contentDescription = "Editar data e horário", tint = MaterialTheme.colorScheme.primary) }
-                IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = MaterialTheme.colorScheme.primary) }
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Outlined.Edit, contentDescription = "Editar data e horário", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = onShare) {
+                    Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }
@@ -859,7 +1346,11 @@ private fun EmptyState(onAdd: () -> Unit, isSearch: Boolean) {
 }
 
 @Composable
-private fun TrustFooter(versionName: String, onCheckUpdate: () -> Unit) {
+private fun TrustFooter(
+    versionName: String,
+    updaterEnabled: Boolean,
+    onCheckUpdate: () -> Unit
+) {
     Column(
         Modifier.fillMaxWidth().padding(top = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -874,10 +1365,14 @@ private fun TrustFooter(versionName: String, onCheckUpdate: () -> Unit) {
             Text("Seus arquivos ficam privados neste aparelho", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(
-            text = "Meu Ponto v$versionName • Toque para verificar atualizações",
+            text = if (updaterEnabled) "Meu Ponto v$versionName • Toque para verificar atualizações" else "Meu Ponto v$versionName",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-            modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onCheckUpdate).padding(horizontal = 6.dp, vertical = 2.dp)
+            modifier = if (updaterEnabled) {
+                Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onCheckUpdate).padding(horizontal = 6.dp, vertical = 2.dp)
+            } else {
+                Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            }
         )
     }
 }
@@ -997,48 +1492,159 @@ private fun BackupPasswordDialog(action: String, onDismiss: () -> Unit, onConfir
 private fun EditReceiptSheet(
     receipt: Receipt,
     onDismiss: () -> Unit,
-    onSave: (workDate: String, workTime: String) -> Unit
+    onSave: (workDate: String, entryTime: String?, exitTime: String?) -> Unit
 ) {
     var workDate by remember(receipt.id) { mutableStateOf(receipt.workDate) }
-    var workTime by remember(receipt.id) { mutableStateOf(receipt.workTime) }
-    val dateValid = Regex("\\d{2}/\\d{2}/\\d{4}").matches(workDate.trim())
-    val timeValid = workTime.isBlank() || Regex("([01]?\\d|2[0-3]):[0-5]\\d").matches(workTime.trim())
+    var mode by remember(receipt.id) {
+        mutableStateOf(
+            when {
+                receipt.entryTime != null && receipt.exitTime != null -> "both"
+                receipt.entryTime != null -> "entry"
+                receipt.exitTime != null -> "exit"
+                receipt.workTime.isNotBlank() -> "entry"
+                else -> "none"
+            }
+        )
+    }
+    var entryTime by remember(receipt.id) {
+        mutableStateOf(
+            receipt.entryTime ?: if (receipt.exitTime == null) {
+                receipt.workTime.takeIf { it.isNotBlank() }.orEmpty()
+            } else {
+                ""
+            }
+        )
+    }
+    var exitTime by remember(receipt.id) { mutableStateOf(receipt.exitTime ?: "") }
+
+    val dateValid = isValidWorkDate(workDate)
+    val entryValid = entryTime.isBlank() || WorkStatsCalculator.parseClockTime(entryTime) != null
+    val exitValid = exitTime.isBlank() || WorkStatsCalculator.parseClockTime(exitTime) != null
+    val timesValid = when (mode) {
+        "both" -> entryTime.isNotBlank() && exitTime.isNotBlank() && entryValid && exitValid
+        "entry" -> entryTime.isNotBlank() && entryValid
+        "exit" -> exitTime.isNotBlank() && exitValid
+        else -> true
+    }
+    val duration = if (mode == "both") {
+        WorkStatsCalculator.durationMinutes(entryTime, exitTime)
+    } else {
+        null
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(
-            Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            Modifier
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Revisar comprovante", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            Text("Confirme o que o OCR identificou ou corrija os campos antes de arquivar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Revisar comprovante",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                "Confirme o que o OCR identificou ou corrija os campos antes de arquivar.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             OutlinedTextField(
                 value = workDate,
-                onValueChange = { workDate = it },
+                onValueChange = { workDate = formatDateInput(it) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Data") },
                 placeholder = { Text("dd/mm/aaaa") },
-                isError = workDate.isNotBlank() && !dateValid,
-                supportingText = { if (workDate.isNotBlank() && !dateValid) Text("Use o formato dd/mm/aaaa") }
-            )
-            OutlinedTextField(
-                value = workTime,
-                onValueChange = { workTime = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("Horário (opcional)") },
-                placeholder = { Text("hh:mm") },
-                isError = !timeValid,
                 supportingText = {
-                    if (!timeValid) Text("Use o formato hh:mm") else Text("Se não houver horário no comprovante, deixe em branco.")
-                }
+                    Text(
+                        when {
+                            workDate.isBlank() -> "Ex.: 22/10/2026"
+                            !dateValid -> "Use o formato dd/mm/aaaa"
+                            else -> "Data reconhecida"
+                        }
+                    )
+                },
+                isError = workDate.isNotBlank() && !dateValid,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+
+            Text(
+                "Registro de horário",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(punchModes) { option ->
+                    FilterChip(
+                        selected = mode == option.key,
+                        onClick = { mode = option.key },
+                        label = { Text(option.label) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = organizeChipColors(),
+                        border = organizeChipBorder(mode == option.key)
+                    )
+                }
+            }
+
+            if (mode == "both" || mode == "entry") {
+                OutlinedTextField(
+                    value = entryTime,
+                    onValueChange = { entryTime = formatTimeInput(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(if (mode == "both") "Entrada" else "Horário") },
+                    placeholder = { Text("hh:mm") },
+                    supportingText = {
+                        Text(if (entryTime.isBlank()) "Ex.: 10:20" else "Horário de entrada")
+                    },
+                    isError = entryTime.isNotBlank() && !entryValid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            }
+            if (mode == "both" || mode == "exit") {
+                OutlinedTextField(
+                    value = exitTime,
+                    onValueChange = { exitTime = formatTimeInput(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(if (mode == "both") "Saída" else "Horário") },
+                    placeholder = { Text("hh:mm") },
+                    supportingText = {
+                        Text(if (exitTime.isBlank()) "Ex.: 10:20" else "Horário de saída")
+                    },
+                    isError = exitTime.isNotBlank() && !exitValid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            }
+            if (mode == "both") {
+                Text(
+                    if (duration != null) "Total calculado: ${formatMinutes(duration)}" else "Informe entrada e saída para calcular as horas.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (duration != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 TextButton(onClick = onDismiss) { Text("Cancelar") }
                 Spacer(Modifier.width(8.dp))
                 Button(
-                    onClick = { onSave(workDate.trim(), workTime.trim()) },
-                    enabled = dateValid && timeValid,
+                    onClick = {
+                        onSave(
+                            workDate.trim(),
+                            entryTime.trim().takeIf { it.isNotBlank() },
+                            exitTime.trim().takeIf { it.isNotBlank() }
+                        )
+                    },
+                    enabled = dateValid && timesValid,
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Icon(Icons.Outlined.TaskAlt, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -1071,9 +1677,26 @@ private fun copyToPrivateStorage(context: Context, uri: Uri): File {
     return file
 }
 
+private fun cleanupUpdateAndPdfCaches(context: Context) {
+    runCatching {
+        File(context.cacheDir, "shared").deleteRecursively()
+        File(context.cacheDir, "updates").deleteRecursively()
+        context.cacheDir.listFiles()
+            ?.filter { it.name.startsWith("meu-ponto-backup-") || it.name.startsWith("meu-ponto-restore-") }
+            ?.forEach { it.deleteRecursively() }
+        context.cacheDir.listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith("restore_") }
+            ?.forEach { it.deleteRecursively() }
+    }
+}
+
 private val BackupMagic = "MEUPONTO_BACKUP_V2".toByteArray(Charsets.US_ASCII)
 private const val BackupVersion: Byte = 1
 private const val BackupIterations = 120_000
+private const val MaxRestoreZipEntries = 2_000
+private const val MaxRestoreImageBytes = 48L * 1024L * 1024L
+private const val MaxRestoreManifestBytes = 8L * 1024L * 1024L
+private const val MaxRestoreManifestItems = 5_000
 
 private suspend fun createBackup(context: Context, dao: ReceiptDao, destination: Uri, password: String): Int = withContext(Dispatchers.IO) {
     val receipts = dao.getAll()
@@ -1093,6 +1716,9 @@ private suspend fun createBackup(context: Context, dao: ReceiptDao, destination:
                         .put("capturedAt", receipt.capturedAt)
                         .put("workDate", receipt.workDate)
                         .put("workTime", receipt.workTime)
+                        .put("entryTime", receipt.entryTime ?: "")
+                        .put("exitTime", receipt.exitTime ?: "")
+                        .put("needsReview", receipt.needsReview)
                         .put("recognizedText", receipt.recognizedText)
                         .put("imageEntry", imageEntry)
                 )
@@ -1121,8 +1747,23 @@ private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: 
         decryptOrCopyBackup(context, sourceUri, zipFile, password)
         zipFile.inputStream().use { input ->
             ZipInputStream(BufferedInputStream(input)).use { zip ->
+                var entries = 0
                 while (true) {
                     val entry = zip.nextEntry ?: break
+                    entries++
+                    if (entries > MaxRestoreZipEntries) error("Backup excede o limite de arquivos")
+                    if (!entry.isDirectory &&
+                        entry.name != "manifest.json" &&
+                        !entry.name.startsWith("images/")
+                    ) {
+                        error("Backup com arquivo inesperado")
+                    }
+                    val maximumBytes = when {
+                        entry.isDirectory -> 0L
+                        entry.name == "manifest.json" -> MaxRestoreManifestBytes
+                        else -> MaxRestoreImageBytes
+                    }
+                    if (entry.size > maximumBytes) error("Backup excede o tamanho permitido")
                     val target = File(restoreDir, entry.name)
                     val rootPath = restoreDir.canonicalPath + File.separator
                     if (!target.canonicalPath.startsWith(rootPath)) error("Backup inválido")
@@ -1130,7 +1771,17 @@ private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: 
                         target.mkdirs()
                     } else {
                         target.parentFile?.mkdirs()
-                        target.outputStream().use { output -> zip.copyTo(output) }
+                        target.outputStream().use { output ->
+                            val buffer = ByteArray(16384)
+                            var total = 0
+                            while (true) {
+                                val read = zip.read(buffer)
+                                if (read == -1) break
+                                total += read
+                                if (total > maximumBytes) error("Backup excede o tamanho permitido")
+                                output.write(buffer, 0, read)
+                            }
+                        }
                     }
                     zip.closeEntry()
                 }
@@ -1140,24 +1791,39 @@ private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: 
         val manifestFile = File(restoreDir, "manifest.json")
         if (!manifestFile.isFile) error("Manifesto do backup ausente")
         val items = JSONArray(manifestFile.readText(Charsets.UTF_8))
+        if (items.length() > MaxRestoreManifestItems) error("Backup excede o limite de registros")
         val destinationDir = File(context.filesDir, "receipts").apply { mkdirs() }
         val restored = buildList {
             for (index in 0 until items.length()) {
                 val item = items.getJSONObject(index)
                 val imageSource = File(restoreDir, item.getString("imageEntry"))
                 if (!imageSource.isFile) continue
-                val imageDestination = File(destinationDir, "restored_${item.getLong("id")}_${System.currentTimeMillis()}_$index.jpg")
-                imageSource.copyTo(imageDestination, overwrite = true)
-                add(
-                    Receipt(
-                        id = 0,
-                        capturedAt = item.getLong("capturedAt"),
-                        workDate = item.getString("workDate"),
-                        workTime = item.getString("workTime"),
-                        imagePath = imageDestination.absolutePath,
-                        recognizedText = item.optString("recognizedText")
-                    )
+                val candidate = Receipt(
+                    id = 0,
+                    capturedAt = item.getLong("capturedAt"),
+                    workDate = item.getString("workDate"),
+                    workTime = item.getString("workTime"),
+                    imagePath = imageSource.absolutePath,
+                    recognizedText = item.optString("recognizedText"),
+                    entryTime = item.optString("entryTime").takeIf { it.isNotBlank() },
+                    exitTime = item.optString("exitTime").takeIf { it.isNotBlank() },
+                    needsReview = item.optBoolean("needsReview", false) ||
+                        WorkStatsCalculator.parseWorkDate(item.getString("workDate")) == null
                 )
+                val alreadyRestored = dao.getByCapturedAt(candidate.capturedAt).any { existing ->
+                    existing.workDate == candidate.workDate &&
+                        existing.workTime == candidate.workTime &&
+                        existing.entryTime == candidate.entryTime &&
+                        existing.exitTime == candidate.exitTime &&
+                        existing.recognizedText == candidate.recognizedText
+                }
+                if (alreadyRestored) continue
+                val imageDestination = File(
+                    destinationDir,
+                    "restored_${candidate.capturedAt}_${System.currentTimeMillis()}_$index.jpg"
+                )
+                imageSource.copyTo(imageDestination, overwrite = true)
+                add(candidate.copy(imagePath = imageDestination.absolutePath))
             }
         }
         dao.insertAll(restored)
@@ -1245,14 +1911,40 @@ private suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: Fi
     val text = withContext(Dispatchers.IO) {
         val image = InputImage.fromFilePath(context, Uri.fromFile(file))
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        try { recognizer.process(image).await().text } finally { recognizer.close() }
+        try {
+            recognizer.process(image).await().text
+        } finally {
+            recognizer.close()
+        }
     }
-    val dateMatch = Regex("\\b(\\d{2})[./-](\\d{2})[./-](\\d{4})\\b").find(text)
-    val timeMatch = Regex("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b").find(text)
-    val date = dateMatch?.value?.replace('.', '/')?.replace('-', '/') ?: SimpleDateFormat("dd/MM/yyyy", PtBrLocale).format(Date())
-    val time = timeMatch?.value ?: ""
-    dao.insert(Receipt(capturedAt = System.currentTimeMillis(), workDate = date, workTime = time, imagePath = file.absolutePath, recognizedText = text))
-    return if (dateMatch != null) "Comprovante salvo • confira a data $date" else "Comprovante salvo • revise a data reconhecida"
+    val date = WorkStatsCalculator.normalizeWorkDate(text)
+    val times = Regex("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b")
+        .findAll(text)
+        .mapNotNull { WorkStatsCalculator.normalizeClockTime(it.value) }
+        .toList()
+    val entry = times.getOrNull(0)
+    val exit = times.getOrNull(1)
+    val needsReview = date == null || times.isEmpty()
+
+    dao.insert(
+        Receipt(
+            capturedAt = System.currentTimeMillis(),
+            workDate = date ?: "",
+            workTime = entry ?: exit ?: "",
+            imagePath = file.absolutePath,
+            recognizedText = text,
+            entryTime = entry,
+            exitTime = exit,
+            needsReview = needsReview
+        )
+    )
+
+    return when {
+        date == null && times.isEmpty() -> "Comprovante salvo — revise data e horário."
+        date == null -> "Comprovante salvo — revise a data."
+        times.isEmpty() -> "Comprovante salvo — revise o horário."
+        else -> "Comprovante salvo — confira a data $date."
+    }
 }
 
 private fun decodePreview(path: String): Bitmap? {
@@ -1267,9 +1959,23 @@ private fun shareAsPdf(context: Context, receipts: List<Receipt>) {
         if (receipts.size == 1) {
             val receipt = receipts.first()
             val bitmap = decodePdfBitmap(receipt.imagePath) ?: error("Imagem indisponível")
-            val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width.coerceAtLeast(1), bitmap.height.coerceAtLeast(1), 1).create()
+            val footerHeight = 96
+            val pageInfo = PdfDocument.PageInfo.Builder(
+                bitmap.width.coerceAtLeast(1),
+                bitmap.height.coerceAtLeast(1) + footerHeight,
+                1
+            ).create()
             val page = pdf.startPage(pageInfo)
+            page.canvas.drawColor(android.graphics.Color.WHITE)
             page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+            drawPdfReceiptInfo(
+                canvas = page.canvas,
+                receipt = receipt,
+                left = 24f,
+                baseline = bitmap.height + 34f,
+                textSize = 24f,
+                includeFooter = true
+            )
             pdf.finishPage(page)
             bitmap.recycle()
         } else {
@@ -1278,6 +1984,7 @@ private fun shareAsPdf(context: Context, receipts: List<Receipt>) {
             val margin = 36f
             val gap = 24f
             val slotHeight = (pageHeight - (margin * 2) - gap) / 2f
+            val infoHeight = 48f
             receipts.chunked(2).forEachIndexed { pageIndex, pageReceipts ->
                 val pageInfo = PdfDocument.PageInfo.Builder(pageWidth.toInt(), pageHeight.toInt(), pageIndex + 1).create()
                 val page = pdf.startPage(pageInfo)
@@ -1285,8 +1992,16 @@ private fun shareAsPdf(context: Context, receipts: List<Receipt>) {
                 pageReceipts.forEachIndexed { slotIndex, receipt ->
                     val bitmap = decodePdfBitmap(receipt.imagePath) ?: error("Imagem indisponível")
                     val top = margin + (slotIndex * (slotHeight + gap))
-                    val target = fitBitmapRect(bitmap, margin, top, pageWidth - margin, top + slotHeight)
+                    val target = fitBitmapRect(bitmap, margin, top, pageWidth - margin, top + slotHeight - infoHeight)
                     page.canvas.drawBitmap(bitmap, null, target, null)
+                    drawPdfReceiptInfo(
+                        canvas = page.canvas,
+                        receipt = receipt,
+                        left = margin,
+                        baseline = top + slotHeight - 18f,
+                        textSize = 20f,
+                        includeFooter = false
+                    )
                     bitmap.recycle()
                 }
                 pdf.finishPage(page)
@@ -1314,6 +2029,34 @@ private fun shareAsPdf(context: Context, receipts: List<Receipt>) {
         context.startActivity(android.content.Intent.createChooser(intent, chooserTitle))
     } catch (error: Exception) {
         Toast.makeText(context, "Falha ao gerar PDF", Toast.LENGTH_LONG).show()
+    }
+}
+
+private fun drawPdfReceiptInfo(
+    canvas: Canvas,
+    receipt: Receipt,
+    left: Float,
+    baseline: Float,
+    textSize: Float,
+    includeFooter: Boolean
+) {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.DKGRAY
+        this.textSize = textSize
+        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+    }
+    val duration = WorkStatsCalculator.durationMinutes(receipt)?.let { " · ${formatMinutes(it)}" }.orEmpty()
+    val review = if (receipt.needsReview) " · Revisar" else ""
+    canvas.drawText(
+        "${receipt.workDate.ifBlank { "Data pendente" }} · ${receiptTimeLabel(receipt)}$duration$review",
+        left,
+        baseline,
+        paint
+    )
+    if (includeFooter) {
+        paint.textSize = textSize * .78f
+        paint.color = android.graphics.Color.GRAY
+        canvas.drawText("Meu Ponto · arquivo local", left, baseline + textSize + 10f, paint)
     }
 }
 

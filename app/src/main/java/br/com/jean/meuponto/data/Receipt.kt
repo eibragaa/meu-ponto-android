@@ -10,5 +10,8 @@ data class Receipt(
     val workDate: String,
     val workTime: String,
     val imagePath: String,
-    val recognizedText: String
+    val recognizedText: String,
+    val entryTime: String? = null,
+    val exitTime: String? = null,
+    val needsReview: Boolean = false
 )
