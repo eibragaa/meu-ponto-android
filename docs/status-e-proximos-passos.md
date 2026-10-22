@@ -80,6 +80,14 @@ Mudanças já existentes no projeto ao iniciar esta rodada, que implementam part
 
 ---
 
+### 3.1 Keystore de distribuição (criado em 22/10/2026)
+- Arquivo: `C:\Users\jeanb\.meuponto\meu-ponto-release.jks` (fora do repo; `.gitignore` bloqueia `*.jks`).
+- Credenciais: `C:\Users\jeanb\.meuponto\credenciais-release.txt`. Guardar uma cópia do `.jks` e das senhas fora deste PC. **Sem eles não há atualização futura.**
+- Alias: `meuponto-release`. SHA-256 do certificado: `4E:F4:64:D5:F9:EC:8E:6C:15:6A:48:26:FB:2A:0C:0F:BA:34:4C:7B:15:CD:C7:E7:6A:55:C8:CD:C2:BB:36:83`.
+- Secrets no GitHub cadastrados: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+- Validado: `assembleGithubRelease` local assinado com este certificado.
+- **Pendente:** o celular ainda tem APK com outra assinatura. A migração (backup pelo app, desinstalar, reinstalar) não foi feita. O workflow ainda precisa de correção (ver P11).
+
 ## 4. Política de privacidade (`docs/privacy-policy.md`)
 
 Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e retenção, direitos do titular, permissões). Precisa de revisão antes de publicar:
@@ -119,6 +127,8 @@ Ver `git log` no remote. Grupos:
 | P8 | Política com termos incorretos (seção 4) | Risco de reprovação ou de informação errada | Revisar antes de publicar |
 | P9 | Período de folha alterado no WSA sem ação registrada | Dúvida sobre dados de teste | Confirmar com o usuário |
 | P10 | Updater não identifica o celular atual | Não sabemos a versão instalada no celular | Informar a versão do app no celular |
+| P11 | Workflow de release quebrado: caminhos antigos (`apk/debug`, `bundle/release`) e não gera o APK da `github` | Nova release não tem APK para o updater | Corrigir workflow (aguardando confirmação) |
+| P12 | Releases anteriores assinadas com certificados debug diferentes (`v0.3.3` = `8f347d…`, `v0.4.0` = `2aa251…`) | Update por cima entre releases do CI falha | Usar o keystore fixo (seção 3.1) |
 
 ---
 

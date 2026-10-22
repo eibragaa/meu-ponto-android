@@ -10,5 +10,9 @@ captures/
 .kotlin/
 phone-screen.png
 work/
+*.jks
+*.keystore
+keystore.properties
+credenciais-release.txt
 
 
