@@ -29,9 +29,9 @@ Bloqueadores principais:
 - [x] **(B2) Auto Backup:** define `android:dataExtractionRules`, `fullBackupContent` e `allowBackup=false`. O banco Room, `files/receipts/` e `cache/` não participam de backup automático.
   - [ ] Detectar em dispositivo real e comemorar na política e no Data Safety.
 - [ ] **(B3) Assinatura:**
-  - [ ] Gerar keystore de upload e guardar fora do repositório.
+  - [x] Gerar keystore de distribuição e guardar fora do repositório (`C:\Users\jeanb\.meuponto`), com Secrets no GitHub. Chave de upload da Play ainda pendente.
   - [ ] Configurar Play App Signing no Play Console.
-  - [ ] Parar de publicar APK debug como Release público no GitHub.
+  - [x] Parar de publicar APK debug como Release público no GitHub (release `v0.5.0` assinada; `v0.4.0` ainda é debug, ver status P3).
   - [ ] Validar que a assinatura de release é a mesma entre versões.
 - [ ] **(B4) Política de privacidade:**
   - [x] Reescrever com requisitos LGPD (controlador, encarregado, direitos do titular, retenção, base legal, segurança).
@@ -70,7 +70,7 @@ Bloqueadores principais:
 - [ ] Unificar estado: `rememberSaveable` onde a tela precisa sobreviver a rotação e process death.
 - [ ] Criar `strings.xml` (pt-BR default, en). Remover strings hardcoded.
 - [ ] Tratar erros com tipos próprios; remover `catch` genéricos silenciosos.
-- [x] **Bug:** restaurar backup duplica comprovantes. Implementado dedupe + validação (limite de entradas/tamanho, path traversal, mau manifesto) no restore.
+- [x] **Bug:** restaurar backup duplica comprovantes. Dedupe por `capturedAt` no restore, com validação de path traversal e manifesto. **Pendente:** dedupe por hash da imagem e limite de tamanho/entradas do ZIP (zip bomb).
 - [x] Room: configurar `room.schemaLocation` e versionar schemas.
 - [x] Limpeza de `cache/shared` (PDFs), `cache/updates` (APKs) e temporários de restore ao iniciar o app.
 

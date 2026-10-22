@@ -1,8 +1,23 @@
 # Meu Ponto — status atual e próximos passos
 
-_Atualizado em 22/10/2026. Versão do código: `0.5.0` (`versionCode 8`)._
+_Atualizado em 22/10/2026 (fim do dia). Versão publicada: `v0.5.0` (`versionCode 8`)._
 
-Este documento registra o que foi feito até aqui, o estado atual do projeto, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
+Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
+
+---
+
+## 0. Resumo do dia (22/10/2026)
+
+- Análise completa para publicação na Play Store e roadmap em sprints.
+- Verificação do estado das releases e do código.
+- Release local para teste (R8 + proguard), testada no WSA.
+- Política de privacidade corrigida (termos LGPD).
+- Keystore de distribuição criado e cadastrado no GitHub (Secrets).
+- Workflow de release corrigido (assina `github`, valida tag, publica APK do updater).
+- Tag `v0.5.0` criada e publicada: **Latest**, com APK assinado pelo keystore novo.
+- Docs e código no `main` sincronizados com o remote.
+
+**Pendente para amanhã:** migrar o celular e testar. Ver seção 7.
 
 ---
 
@@ -11,10 +26,10 @@ Este documento registra o que foi feito até aqui, o estado atual do projeto, os
 ### 1.1 Análise e planejamento
 - Análise completa do projeto para publicação na Play Store.
 - Lista de bloqueadores (B1 a B9) e melhorias por área (build, arquitetura, dados, segurança, testes, UX e acessibilidade).
-- Roadmap em sprints (0 a 7) e matriz de testes, salvo em [`roadmap-aaa.md`](roadmap-aaa.md).
+- Roadmap em sprints (0 a 7) e matriz de testes em [`roadmap-aaa.md`](roadmap-aaa.md).
 
-### 1.2 Trabalho encontrado no working copy (ainda não commitado antes desta atualização)
-Mudanças já existentes no projeto ao iniciar esta rodada, que implementam parte do Sprint 0 e 1:
+### 1.2 Trabalho que já estava no working copy (commitado em 22/10)
+Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada em grupos:
 - **Flavors** `play` e `github`. A `play` não tem auto-update; a `github` mantém o updater para sideload. Flag `BuildConfig.UPDATER_ENABLED`.
 - **Permissão** `REQUEST_INSTALL_PACKAGES` removida da flavor `play` (`app/src/play/AndroidManifest.xml`).
 - **Backup**: `allowBackup="false"`, `dataExtractionRules`, `fullBackupContent` (excluem banco, `receipts/` e `cache/`).
@@ -23,28 +38,39 @@ Mudanças já existentes no projeto ao iniciar esta rodada, que implementam part
 - **Room**: schema exportado para `app/schemas/` (`room.schemaLocation` configurado).
 - **Restore sem duplicar**: checagem por `capturedAt` antes de inserir (`getByCapturedAt`).
 - **Limpeza de cache** de PDFs, APKs e backups temporários (`cleanupUpdateAndPdfCaches`).
-- **Novos módulos** no código: `domain/` (cálculo de folha e horas), `ui/` (insights, configuração de folha, visualizador de comprovante).
-- **Política de privacidade** reescrita com estrutura LGPD (ver seção 4).
-- **CI** atualizado: roda testes e lint por flavor, gera `assemblePlayDebug` e `bundlePlayRelease` (ver seção 3).
+- **Novos módulos**: `domain/` (cálculo de folha e horas), `ui/` (insights, configuração de folha, visualizador de comprovante).
+- **Política de privacidade** reescrita com estrutura LGPD (seção 4).
 
-### 1.3 Release local para teste (esta rodada)
+### 1.3 Release local para teste
 - `app/build.gradle.kts`: release com R8 (`isMinifyEnabled`), shrink de recursos e `proguard-android-optimize.txt` + `proguard-rules.pro`.
-- Sem keystore de produção, o release é assinado com a chave debug (só para teste local).
+- Sem keystore de produção, o release é assinado com a chave debug (só teste local).
 - `app/proguard-rules.pro` criado, sem regras extras por enquanto.
-- README: nova seção "Testar a versão release localmente".
+- README: seção "Testar a versão release localmente".
 - Build validado: `assemblePlayRelease` gerou `app-play-release.apk` (42,5 MB). Assinatura conferida com `apksigner`. Mapping do R8 gerado.
 
 ### 1.4 Teste no WSA (Windows Subsystem for Android)
 - Conexão via `adb connect 127.0.0.1:58526`.
-- Release `0.5.0` instalado por cima do `br.com.jean.meuponto` já existente (mesma assinatura debug, dados mantidos).
-- App abre sem crash. Nenhum `AndroidRuntime` no logcat.
-- Tela inicial com lista vazia (0 comprovantes).
-- Imagem de teste enviada para `/sdcard/Pictures/MeuPontoTeste/comprovante-teste.png`.
-- O WSA **não tem Google Play Services nem Play Store**. Consequência: o scanner de documentos (câmera) não funciona nele.
-- Observado: o período de folha mudou para 05/10 a 06/10 com o aviso "Período de folha atualizado", e a sheet "Configurar folha" ficou aberta. Não foi enviado nenhum toque para isso. Confirmar com o usuário se foi uso manual.
+- Primeiro release instalado por cima do `br.com.jean.meuponto` existente (mesma assinatura debug, dados mantidos). App abriu sem crash.
+- Tela inicial com lista vazia (0 comprovantes). Nenhum `AndroidRuntime` no logcat.
+- O WSA **não tem Google Play Services nem Play Store**. O scanner de câmera não funciona nele.
+- Observado: o período de folha mudou para 05/10 a 06/10 com o aviso "Período de folha atualizado" e a sheet "Configurar folha" ficou aberta. Nenhum toque foi enviado para isso. Confirmar com o usuário (P9).
+- Na tela Sobre: versão 0.5.0, aviso "não é registro oficial de ponto" e botão "Política de privacidade" presentes.
 
-### 1.5 Git
-- Mudanças commitadas em grupos por tema e enviadas ao remote (`origin/main`). Ver seção 5.
+### 1.5 Keystore de distribuição e Secrets
+- Keystore criado fora do repo, Secrets cadastrados no GitHub (seção 3.1).
+- Um erro de script foi corrigido na hora: senha da chave diferente da senha do store. Secret e arquivo de credenciais foram alinhados, e o build passou.
+
+### 1.6 Migração do WSA
+- `br.com.jean.meuponto` desinstalado e reinstalado com o APK `github` assinado pelo keystore novo (`4ef464d5…`). Abre sem crash, versão 0.5.0.
+- Teste do updater no WSA: **inconclusivo** (ver P13). O botão "Buscar atualizações agora" está na Sobre, mas não consegui capturar a mensagem de retorno.
+
+### 1.7 Workflow, tag e release v0.5.0
+- Workflow corrigido (seção 3.2) e validado localmente (YAML, caminhos, `assembleGithubRelease` e `bundlePlayRelease` assinados).
+- Tag `v0.5.0` criada e enviada. Run `39811970961` concluído com **sucesso** (todas as etapas).
+- Release `v0.5.0` publicada, marcada como **Latest**, não é draft nem pré-release.
+
+### 1.8 Git
+- Commits do dia no `main` (seção 5), tag `v0.5.0` no commit `49d66b6`. Árvore local sincronizada com o remote.
 
 ---
 
@@ -53,13 +79,13 @@ Mudanças já existentes no projeto ao iniciar esta rodada, que implementam part
 | Área | Estado |
 |---|---|
 | Flavors `play` / `github` | Implementado |
-| Auto-update | Só na `github`. Na `play` não existe |
+| Auto-update | Só na `github`. Na `play` não existe (In-App Updates API da Play ainda não implementada) |
 | Permissões | `INTERNET` em ambas. `REQUEST_INSTALL_PACKAGES` só na `github` |
 | Backup automático do Android | Desativado (`allowBackup=false` + regras) |
 | Backup do app (ZIP, AES-GCM com senha) | Implementado (PBKDF2 com 120k iterações) |
 | Restore | Implementado, com checagem de duplicata por `capturedAt` |
 | Room | v2, schema exportado. Migração 1→2 sem teste automatizado |
-| R8 em release | Ativado, sem regras extras. **Não testado em runtime além do WSA (sem fluxo completo)** |
+| R8 em release | Ativado, sem regras extras. Testado só no WSA (fluxo completo não rodado) |
 | Testes unitários | `WorkStatsCalculatorTest` e `AppUpdaterTest`. Nenhum teste novo |
 | Strings | Hardcoded em pt-BR. Sem `strings.xml` |
 | Arquitetura | `MainActivity.kt` com ~2135 linhas. Sem ViewModel nem Repository |
@@ -69,58 +95,61 @@ Mudanças já existentes no projeto ao iniciar esta rodada, que implementam part
 
 ## 3. Releases e pipeline no GitHub
 
-- **Último release publicado:** `v0.4.0`, em 20/10/2026, marcado como Latest.
-  - Asset: `Meu-Ponto-v0.4.0.apk` (61 MB), **build debug** (debuggable), assinada com a chave do runner do CI.
-  - **Não existe tag `v0.5.0`.** O código atual é `0.5.0`, mas nada foi publicado.
-- **Runs recentes do workflow `Android APK Release`:**
-  - 22/10 14:00 (`workflow_dispatch` no `main`): sucesso, mas rodou o workflow **antigo** (ainda sem commit).
-  - 20/10 13:18 e 13:16 (commit `f72f86d`): falharam com 0s. Corrigidos no commit `29de4f6`.
-  - 20/10 (tag `v0.4.0`): sucesso.
-- **Efeito no updater:** quem está na `0.4.0` não recebe atualização, porque o updater só compara com o último release (`v0.4.0`). Isso é esperado até existir a `v0.5.0`.
+### 3.0 Releases publicadas
+| Versão | Data | Estado | Assets | Assinatura |
+|---|---|---|---|---|
+| **`v0.5.0`** | 22/10/2026 16:19 UTC | **Latest** | `Meu-Ponto-v0.5.0.apk` (44,5 MB), `app-play-release.aab` (22,8 MB) | Keystore novo (`4ef464d5…`) |
+| `v0.4.0` | 20/10/2026 | Anterior | `Meu-Ponto-v0.4.0.apk` (61 MB), **build debug** (debuggable) | Chave do runner (`2aa251…`) |
+| `v0.3.3` | 16/10/2026 | Anterior | `Meu-Ponto-v0.3.3.apk` | Chave do runner (`8f347d…`) |
 
----
+- Sem sinal de problema no run da tag `v0.5.0`.
+- Efeito no updater: quem está na `0.5.0` **não recebe update** enquanto não existir release com versão maior. Para testar o fluxo de atualização de ponta a ponta, é preciso publicar `v0.5.1` depois de migrar o celular.
 
 ### 3.1 Keystore de distribuição (criado em 22/10/2026)
 - Arquivo: `C:\Users\jeanb\.meuponto\meu-ponto-release.jks` (fora do repo; `.gitignore` bloqueia `*.jks`).
 - Credenciais: `C:\Users\jeanb\.meuponto\credenciais-release.txt`. Guardar uma cópia do `.jks` e das senhas fora deste PC. **Sem eles não há atualização futura.**
 - Alias: `meuponto-release`. SHA-256 do certificado: `4E:F4:64:D5:F9:EC:8E:6C:15:6A:48:26:FB:2A:0C:0F:BA:34:4C:7B:15:CD:C7:E7:6A:55:C8:CD:C2:BB:36:83`.
-- Secrets no GitHub cadastrados: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
-- Validado: `assembleGithubRelease` local assinado com este certificado.
-- Validado: `bundlePlayRelease` local assinado com este certificado (`bundle/playRelease/app-play-release.aab`).
-- **WSA migrado (22/10):** `br.com.jean.meuponto` desinstalado e reinstalado com o APK `github` assinado pelo keystore novo. Abre sem crash, versão 0.5.0.
-- **Celular pendente:** ainda tem APK com outra assinatura (ver passo a passo na seção 7).
+- Secrets no GitHub: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+- Mesma chave é usada para a flavor `github` e para o AAB da `play`. Quando for para a Play com Play App Signing, a chave de upload deve ser avaliada (B3).
 
-### 3.2 Workflow de release corrigido (22/10)
-- Tag precisa de todos os Secrets de assinatura (falha cedo se faltar).
+### 3.2 Workflow de release (`.github/workflows/android-release.yml`)
+- Tag exige todos os Secrets de assinatura (falha cedo se faltar).
 - Tag precisa bater com `versionName` em `app/build.gradle.kts`.
-- Build assinado da flavor `github` (`assembleGithubRelease`) é o APK publicado na release, com nome `Meu-Ponto-<tag>.apk`.
-- AAB da flavor `play` é anexado à release quando os Secrets existem.
+- Testes unitários e lint por flavor antes do build.
+- APK publicado: `assembleGithubRelease` assinado, renomeado para `Meu-Ponto-<tag>.apk` (é o que o updater procura).
+- AAB da flavor `play` anexado à release quando os Secrets existem.
 - APK debug não é mais publicado.
-- YAML validado. Caminhos conferidos com build local.
-- Ainda **não** foi executado no GitHub: só ao criar a tag `v0.5.0`.
+- Warnings do run (não bloqueiam): `setup-java@v4` deprecated (migrar para v5) e `ubuntu-latest` migrando para Ubuntu 26.
+
+---
 
 ## 4. Política de privacidade (`docs/privacy-policy.md`)
 
-Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e retenção, direitos do titular, permissões). Precisa de revisão antes de publicar:
+Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e retenção, direitos do titular, permissões).
 
-- [x] **Corrigir texto:** o item do OCR agora diz "extraído da imagem do comprovante".
-- [x] **Confirmar o termo:** "DVT" trocado por **encarregado** em todo o texto. Falta apenas definir a pessoa ou canal do encarregado (ver decisões pendentes).
-- [ ] **Preencher placeholders:** responsável e contato de suporte real.
+- [x] Item do OCR agora diz "extraído da imagem do comprovante".
+- [x] "DVT" trocado por **encarregado** em todo o texto.
+- [ ] **Preencher placeholders:** nome do controlador e e-mail de contato real.
+- [ ] **Definir o encarregado** (pessoa ou canal).
 - [ ] **Publicar em URL HTTPS** pública antes da submissão na Play.
 - [ ] **Conferir** se o texto bate com o comportamento real (Auto Backup desativado, updater só na `github`).
 
 ---
 
-## 5. Commits desta rodada
+## 5. Commits do dia
 
-Ver `git log` no remote. Grupos:
-
-1. `build`: flavors, R8, proguard, schema Room e seção de teste local no README.
-2. `chore(security)`: manifest, regras de backup, network security config e `play` sem permissão de instalação.
-3. `feat(app)`: folha, insights, visualizador, restore sem duplicata e updater por flavor.
-4. `test`: testes de `WorkStatsCalculator`.
-5. `ci`: testes e lint por flavor, builds `play`.
-6. `docs`: política de privacidade, roadmap e este status.
+| Hash | Mensagem |
+|---|---|
+| `579fe06` | build: adiciona flavors play/github, R8 e schema Room |
+| `f80cdd3` | chore(security): desativa backup automático e restringe permissões por flavor |
+| `15d6d91` | feat(app): adiciona folha, insights, visualizador e restore sem duplicar |
+| `e9b9af7` | test: adiciona testes do cálculo de horas e período |
+| `51bfbb5` | ci: roda testes e lint por flavor e gera builds play |
+| `7c5b513` | docs: atualiza política de privacidade, roadmap e status do projeto |
+| `74ee901` | docs: corrige termos da política de privacidade |
+| `69ef2e4` | chore: protege keystores e registra keystore de distribuição |
+| `49d66b6` | ci: publica APK github assinado e valida secrets e versão na tag |
+| tag `v0.5.0` | → `49d66b6`. Release publicada |
 
 ---
 
@@ -128,61 +157,65 @@ Ver `git log` no remote. Grupos:
 
 | # | Problema | Impacto | Ação |
 |---|---|---|---|
-| P1 | Testes unitários não rodam neste PC: o executor do Gradle falha porque o `JAVA_HOME` tem espaço (`C:\Program Files\...`). Compilação funciona. | Não dá para validar testes localmente | Mover o JDK para caminho sem espaço, ou rodar pelo Android Studio / CI |
-| P2 | Lint e build de release não rodaram via CI após as mudanças (o último run usou o workflow antigo) | Falhas de CI só aparecem depois do push | Rodar `lintPlayDebug` e `assemblePlayRelease` localmente; acompanhar o run do CI |
-| P3 | Release público `v0.4.0` é APK debug e debuggable | Exposição de build de teste e confusão para o usuário | Marcar como pré-release ou remover (decisão do usuário) |
-| P4 | Não existe `v0.5.0` | Quem está na `0.4.0` não recebe update | Criar tag após testes no celular |
-| P5 | Scanner de câmera não funciona no WSA | Não dá para testar o fluxo de câmera nesse ambiente | Testar em celular real |
-| P6 | `allowBackup=false` | Reinstalar o app sem backup manual perde os dados | Confirmar se é a decisão desejada |
+| P1 | Testes unitários não rodam neste PC: o executor do Gradle falha porque o `JAVA_HOME` tem espaço (`C:\Program Files\...`). Compilação funciona. | Não dá para validar testes localmente | Mover o JDK para caminho sem espaço, ou rodar pelo Android Studio. O CI roda os testes |
+| P2 | Lint e testes unitários só rodaram no CI (run da tag). Lint local não foi executado | Falhas de lint só aparecem no CI | Rodar `lintPlayDebug` e `lintGithubDebug` localmente |
+| P3 | Release `v0.4.0` continua pública, é APK debug e debuggable | Exposição de build de teste e confusão para o usuário | Marcar como pré-release ou remover (decisão sua) |
+| P4 | ~~Não existe `v0.5.0`~~ | — | **Resolvido**: `v0.5.0` publicada (seção 3.0) |
+| P5 | Scanner de câmera não funciona no WSA (sem Play Services) | Fluxo de câmera só pode ser testado no celular | Testar no celular |
+| P6 | `allowBackup=false` | Reinstalar sem backup manual perde os dados | Confirmar se é a decisão desejada |
 | P7 | Restore deduplica por `capturedAt` | Pode deixar passar comprovantes diferentes com o mesmo timestamp | Trocar por hash da imagem (Sprint 1) |
-| P8 | Política com termos incorretos (seção 4) | Risco de reprovação ou de informação errada | Revisar antes de publicar |
+| P8 | Política: correções de termos feitas, faltam placeholders e encarregado (seção 4) | Não pode ser publicada ainda | Preencher antes da Play |
 | P9 | Período de folha alterado no WSA sem ação registrada | Dúvida sobre dados de teste | Confirmar com o usuário |
-| P10 | Updater não identifica o celular atual | Não sabemos a versão instalada no celular | Informar a versão do app no celular |
-| P11 | ~~Workflow de release quebrado~~ | — | **Resolvido** (seção 3.2). Falta testar no GitHub com tag |
-| P12 | Releases anteriores assinadas com certificados debug diferentes (`v0.3.3` = `8f347d…`, `v0.4.0` = `2aa251…`) | Update por cima entre releases do CI falha | Keystore fixo criado (seção 3.1). **Mitigado** no WSA; falta o celular |
-| P13 | Teste de rede do updater no WSA inconclusivo (`wget` sem resposta; snackbar não capturado) | Não confirmado que o updater alcança o GitHub a partir do WSA | Testar no celular ou após criar `v0.5.0` |
+| P10 | Versão instalada no celular é desconhecida | Não sabemos o estado de partida da migração | Informar a versão do app no celular |
+| P11 | ~~Workflow de release quebrado~~ | — | **Resolvido** (seção 3.2). Rodou com sucesso na tag `v0.5.0` |
+| P12 | Releases anteriores assinadas com certificados diferentes (`v0.3.3`, `v0.4.0`) | Update por cima entre releases antigas e a nova falha | **Mitigado**: keystore fixo. Falta migrar o celular (seção 7) |
+| P13 | Teste de rede do updater no WSA inconclusivo (`wget` sem resposta; mensagem não capturada) | Não confirmado que o updater alcança o GitHub a partir do dispositivo de teste | Testar no celular |
+| P14 | Updater não pode ser testado de ponta a ponta com `v0.5.0` (é a versão mais recente) | Fluxo "baixar e instalar" só se prova com versão maior | Publicar `v0.5.1` de teste depois da migração |
+| P15 | Setup Java v4 e `ubuntu-latest` com avisos de depreciação | Pode quebrar em breve | Atualizar `setup-java` para v5 e fixar `ubuntu-24.04` |
 
 ---
 
 ## 7. Próximos passos
 
-### Migração do celular (passo a passo, fazer uma vez)
+### 7.1 Migração do celular (passo a passo, fazer uma vez)
 Motivo: o celular tem APK com assinatura antiga. Sem a migração, nenhuma atualização pelo GitHub instala.
 
 1. No app atual do celular: **Backup** (ícone de nuvem no topo) → criar backup **com senha** → salvar o ZIP em um lugar seguro (Drive ou PC).
 2. Confirmar que o ZIP abre e que a senha está anotada.
 3. Desinstalar o Meu Ponto do celular.
-4. Instalar o APK assinado com o keystore novo. Opção A: esperar a release `v0.5.0`. Opção B: APK gerado localmente (`assembleGithubRelease`) enviado por USB/adb.
+4. Instalar o **`Meu-Ponto-v0.5.0.apk`** da release Latest (https://github.com/eibragaa/meu-ponto-android/releases/tag/v0.5.0).
 5. Abrir o app → Backup → **Restaurar backup** → escolher o ZIP → digitar a senha.
 6. Conferir a quantidade de comprovantes e as horas.
-7. Em Sobre → "Buscar atualizações agora": deve dizer que está na versão mais recente. Isso confirma o updater.
+7. Em Sobre → "Buscar atualizações agora": deve dizer que está na versão mais recente (`v0.5.0`). Isso confirma o acesso ao GitHub.
 
-### Agora (prioridade alta)
-1. **Migrar o celular** (passo a passo acima).
-2. **Testar no celular real** com o release: scanner, galeria com OCR, edição, PDF individual e em lote, backup com e sem senha, restore, tema claro e escuro.
-2. **Diagnosticar o updater no celular:** informar a versão instalada e se é a build da `github`.
-3. **Revisar a política de privacidade** (seção 4) com as correções apontadas.
-4. **Decidir sobre o release `v0.4.0`** (P3) e quando publicar a `v0.5.0` (P4).
-5. **Resolver P1:** rodar testes unitários e lint localmente.
+### 7.2 Depois da migração
+1. Testar no celular: scanner, galeria com OCR, edição, PDF individual e em lote, backup com e sem senha, restore, tema claro e escuro.
+2. Diagnosticar o updater no celular: informar a versão instalada antes da migração (P10).
+3. Para testar o fluxo de atualização real (P14): publicar `v0.5.1` (ex.: `versionName` `0.5.1` e `versionCode` 9), criar a tag e conferir se o celular oferece a atualização e instala.
+4. Revisar a política de privacidade (seção 4): preencher placeholders e definir o encarregado.
+5. Decidir sobre o `v0.4.0` (P3).
+6. Resolver P1 e P2 (testes e lint locais).
 
-### Sprint 0 pendente (ver roadmap)
-- Keystore de upload e Play App Signing (B3).
+### 7.3 Sprint 0 pendente (ver roadmap)
+- Play App Signing e chave de upload (B3).
 - Data Safety, IARC, público-alvo, declaração de anúncios e AD_ID (B5).
 - Adaptive icon em `mipmap` e assets de loja (B8).
 - `BackHandler` / predictive back nos sheets e telas (B7), layout para telas grandes e checagem de 16 KB.
-- Aviso legal no app (B9).
+- Onboarding com aviso legal (B9; a Sobre já tem o texto).
 - Closed test: 12 testers por 14 dias (B6).
 
-### Sprint 1 e 2 pendentes
+### 7.4 Sprint 1 e 2 pendentes
 - ViewModel, Repository e UseCases; quebrar `MainActivity.kt`.
 - `strings.xml` (pt-BR e en).
 - Hash da imagem no restore (P7).
 - Testes: OCR, backup (round-trip, senha errada, arquivo corrompido, zip slip), DAO e migração 1→2.
 - Regras R8 testadas em release.
-- CI com `lintRelease`.
+- CI com `lintRelease`, `setup-java` v5 (P15).
 
-### Decisões que dependem de você
+---
+
+## 8. Decisões que dependem de você
 - Aceitar `allowBackup=false` (P6)?
 - Qual pessoa ou canal será o encarregado (LGPD)?
-- Manter o `v0.4.0` público, marcar como pré-release ou remover?
-- Publicar a `v0.5.0` quando os testes no celular passarem?
+- Manter o `v0.4.0` público, marcar como pré-release ou remover (P3)?
+- Próxima versão de teste (`v0.5.1`) quando a migração do celular estiver feita?
