@@ -107,7 +107,7 @@ class DayOccurrenceTest {
             listOf(entryOnly, absentSameDay, complete, marked)
         )
 
-        assertEquals(listOf(entryOnly, marked), result)
+        assertEquals(listOf(entryOnly, absentSameDay, marked), result)
     }
 
     @Test
