@@ -3,27 +3,22 @@ package br.com.jean.meuponto
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.graphics.pdf.PdfDocument
-import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,26 +46,26 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
@@ -80,6 +75,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -87,17 +83,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.TextRange
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import br.com.jean.meuponto.updater.AppUpdateInfo
-import br.com.jean.meuponto.updater.AppUpdater
-import br.com.jean.meuponto.updater.UpdateDialog
-import br.com.jean.meuponto.updater.AboutSheet
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -106,7 +94,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -117,231 +104,83 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import br.com.jean.meuponto.BuildConfig
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
-import br.com.jean.meuponto.data.ReceiptDao
-import br.com.jean.meuponto.BuildConfig
-import br.com.jean.meuponto.domain.PayrollSettings
+import br.com.jean.meuponto.data.cleanupUpdateAndPdfCaches
+import br.com.jean.meuponto.data.copyToPrivateStorage
+import br.com.jean.meuponto.data.createBackup
+import br.com.jean.meuponto.data.decodePreview
+import br.com.jean.meuponto.data.recognizeAndSave
+import br.com.jean.meuponto.data.restoreBackup
+import br.com.jean.meuponto.data.shareAsPdf
 import br.com.jean.meuponto.domain.PayrollSettingsStore
 import br.com.jean.meuponto.domain.PeriodStats
-import br.com.jean.meuponto.domain.WorkDayStats
 import br.com.jean.meuponto.domain.WorkStatsCalculator
 import br.com.jean.meuponto.domain.formatMinutes
+import br.com.jean.meuponto.domain.receiptTimeLabel
+import br.com.jean.meuponto.ui.Coral
+import br.com.jean.meuponto.ui.DaySection
+import br.com.jean.meuponto.ui.Ink
 import br.com.jean.meuponto.ui.InsightsSheet
+import br.com.jean.meuponto.ui.MeuPontoTheme
+import br.com.jean.meuponto.ui.Mint
+import br.com.jean.meuponto.ui.MonthSection
 import br.com.jean.meuponto.ui.PayrollSettingsSheet
+import br.com.jean.meuponto.ui.PtBrLocale
 import br.com.jean.meuponto.ui.ReceiptViewer
-import com.google.mlkit.vision.common.InputImage
+import br.com.jean.meuponto.ui.TealDark
+import br.com.jean.meuponto.ui.buildMonthSections
+import br.com.jean.meuponto.ui.currentMonthKey
+import br.com.jean.meuponto.ui.filters
+import br.com.jean.meuponto.ui.formatDateInput
+import br.com.jean.meuponto.ui.formatTimeInput
+import br.com.jean.meuponto.ui.groupModes
+import br.com.jean.meuponto.ui.groupReceipts
+import br.com.jean.meuponto.ui.isValidWorkDate
+import br.com.jean.meuponto.ui.maskedFieldValue
+import br.com.jean.meuponto.ui.punchModes
+import br.com.jean.meuponto.updater.AboutSheet
+import br.com.jean.meuponto.updater.AppUpdateInfo
+import br.com.jean.meuponto.updater.AppUpdater
+import br.com.jean.meuponto.updater.UpdateDialog
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.BufferedOutputStream
-import java.io.BufferedInputStream
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
-import java.security.SecureRandom
-import javax.crypto.Cipher
-import javax.crypto.CipherInputStream
-import javax.crypto.CipherOutputStream
-import javax.crypto.SecretKeyFactory
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.PBEKeySpec
-import javax.crypto.spec.SecretKeySpec
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-private val Ink = Color(0xFF112032)
-private val InkSoft = Color(0xFF304052)
-private val Teal = Color(0xFF157C70)
-private val TealDark = Color(0xFF0B5C53)
-private val Mint = Color(0xFFD8F1E2)
-private val Coral = Color(0xFFFF8A72)
-private val Cream = Color(0xFFF8F7F2)
-private val Mist = Color(0xFFE9EFEC)
-private val Line = Color(0xFFD6E0DB)
-private val Muted = Color(0xFF6B7773)
-private val PtBrLocale: Locale = Locale.forLanguageTag("pt-BR")
 
-private data class FilterOption(val key: String, val label: String)
 
-private val filters = listOf(
-    FilterOption("all", "Todos"),
-    FilterOption("today", "Hoje"),
-    FilterOption("time", "Com horário")
-)
 
-private val groupModes = listOf(
-    FilterOption("month", "Mês"),
-    FilterOption("day", "Dia"),
-    FilterOption("week", "Semana"),
-    FilterOption("none", "Lista")
-)
 
-private val punchModes = listOf(
-    FilterOption("both", "Entrada e saída"),
-    FilterOption("entry", "Só entrada"),
-    FilterOption("exit", "Só saída"),
-    FilterOption("none", "Sem horário")
-)
 
-private data class ReceiptGroup(val title: String, val receipts: List<Receipt>)
 
-private data class DaySection(
-    val key: String,
-    val title: String,
-    val receipts: List<Receipt>,
-    val minutes: Int,
-    val receiptCount: Int,
-    val pending: Boolean
-)
 
-private data class MonthSection(
-    val key: String,
-    val title: String,
-    val days: List<DaySection>,
-    val receiptCount: Int,
-    val minutes: Int
-)
 
-private val monthTitleFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", PtBrLocale)
-private val dayTitleFormatter = DateTimeFormatter.ofPattern("dd/MM · EEEE", PtBrLocale)
 
-private fun monthKey(workDate: String): String =
-    WorkStatsCalculator.parseWorkDate(workDate)
-        ?.format(DateTimeFormatter.ofPattern("yyyy-MM"))
-        ?: "revisar"
 
-private fun monthTitle(key: String): String {
-    if (key == "revisar") return "Precisa de revisão"
-    val date = runCatching { LocalDate.parse("$key-01") }.getOrNull() ?: return "Período"
-    return date.format(monthTitleFormatter).replaceFirstChar { it.toString().uppercase(PtBrLocale) }
-}
 
-private fun dayTitle(key: String): String {
-    if (key == "revisar") return "Data pendente"
-    val date = WorkStatsCalculator.parseWorkDate(key) ?: return "Data a revisar"
-    return date.format(dayTitleFormatter).replaceFirstChar { it.toString().uppercase(PtBrLocale) }
-}
 
-private fun currentMonthKey(): String =
-    LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM"))
 
-private fun buildMonthSections(
-    receipts: List<Receipt>,
-    dayStats: Map<String, WorkDayStats>
-): List<MonthSection> {
-    return receipts
-        .groupBy { monthKey(it.workDate) }
-        .map { (key, items) ->
-            val days = items
-                .groupBy { it.workDate.ifBlank { "revisar" } }
-                .map { (dayKey, dayReceipts) ->
-                    val dayStat = dayStats[dayKey]
-                    DaySection(
-                        key = dayKey,
-                        title = dayTitle(dayKey),
-                        receipts = dayReceipts,
-                        minutes = dayStat?.minutes ?: 0,
-                        receiptCount = dayStat?.receiptCount ?: dayReceipts.size,
-                        pending = dayStat?.pending ?: dayReceipts.any { it.needsReview }
-                    )
-                }
-                .sortedWith(
-                    compareBy<DaySection> { if (it.key == "revisar") 0 else 1 }
-                        .thenByDescending { it.key }
-                )
-            MonthSection(
-                key = key,
-                title = monthTitle(key),
-                days = days,
-                receiptCount = items.size,
-                minutes = days.sumOf { it.minutes }
-            )
-        }
-        .sortedWith(
-            compareBy<MonthSection> { if (it.key == "revisar") 0 else 1 }
-                .thenByDescending { it.key }
-        )
-}
-
-private fun isValidWorkDate(value: String): Boolean =
-    WorkStatsCalculator.parseWorkDate(value) != null
-
-private fun formatDateInput(value: String): String {
-    val digits = value.filter { it.isDigit() }.take(8)
-    val parts = listOf(digits.take(2), digits.drop(2).take(2), digits.drop(4).take(4))
-        .filter { it.isNotEmpty() }
-    return parts.joinToString("/")
-}
-
-private fun formatTimeInput(value: String): String {
-    val digits = value.filter { it.isDigit() }.take(4)
-    return if (digits.length > 2) "${digits.take(2)}:${digits.drop(2)}" else digits
-}
-
-private fun maskedFieldValue(input: TextFieldValue, format: (String) -> String): TextFieldValue {
-    val formatted = format(input.text)
-    return TextFieldValue(formatted, TextRange(formatted.length))
-}
-
-private fun receiptTimeLabel(receipt: Receipt): String = when {
-    !receipt.entryTime.isNullOrBlank() && !receipt.exitTime.isNullOrBlank() ->
-        "Entrada ${receipt.entryTime} · Saída ${receipt.exitTime}"
-    !receipt.entryTime.isNullOrBlank() -> "Entrada ${receipt.entryTime} · saída pendente"
-    !receipt.exitTime.isNullOrBlank() -> "Saída ${receipt.exitTime} · entrada pendente"
-    receipt.workTime.isNotBlank() -> "Horário ${receipt.workTime}"
-    else -> "Horário pendente"
-}
-
-private fun groupReceipts(receipts: List<Receipt>, mode: String): List<ReceiptGroup> {
-    if (mode == "none") return listOf(ReceiptGroup("", receipts))
-    return receipts.groupBy { receipt ->
-        when (mode) {
-            "day" -> receipt.workDate.ifBlank { "Data pendente" }
-            "week" -> weekLabel(receipt.workDate)
-            else -> ""
-        }
-    }.map { (title, items) -> ReceiptGroup(title, items) }
-}
-
-private fun weekLabel(workDate: String): String {
-    val parsed = runCatching {
-        SimpleDateFormat("dd/MM/yyyy", PtBrLocale).apply { isLenient = false }.parse(workDate)
-    }.getOrNull() ?: return "Data a revisar"
-    val start = Calendar.getInstance(PtBrLocale).apply {
-        time = parsed
-        firstDayOfWeek = Calendar.MONDAY
-        minimalDaysInFirstWeek = 4
-        set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-    }
-    val end = (start.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 6) }
-    val formatter = SimpleDateFormat("dd/MM", PtBrLocale)
-    return "${formatter.format(start.time)} – ${formatter.format(end.time)}"
-}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1686,466 +1525,12 @@ private fun MeuPontoMark(modifier: Modifier, compact: Boolean = false) {
     }
 }
 
-private fun copyToPrivateStorage(context: Context, uri: Uri): File {
-    val dir = File(context.filesDir, "receipts").apply { mkdirs() }
-    val file = File(dir, "comprovante_${System.currentTimeMillis()}.jpg")
-    context.contentResolver.openInputStream(uri).use { input -> file.outputStream().use { output -> input?.copyTo(output) ?: error("Arquivo vazio") } }
-    return file
-}
 
-private fun cleanupUpdateAndPdfCaches(context: Context) {
-    runCatching {
-        File(context.cacheDir, "shared").deleteRecursively()
-        File(context.cacheDir, "updates").deleteRecursively()
-        context.cacheDir.listFiles()
-            ?.filter { it.name.startsWith("meu-ponto-backup-") || it.name.startsWith("meu-ponto-restore-") }
-            ?.forEach { it.deleteRecursively() }
-        context.cacheDir.listFiles()
-            ?.filter { it.isDirectory && it.name.startsWith("restore_") }
-            ?.forEach { it.deleteRecursively() }
-    }
-}
 
-private val BackupMagic = "MEUPONTO_BACKUP_V2".toByteArray(Charsets.US_ASCII)
-private const val BackupVersion: Byte = 1
-private const val BackupIterations = 120_000
-private const val MaxRestoreZipEntries = 2_000
-private const val MaxRestoreImageBytes = 48L * 1024L * 1024L
-private const val MaxRestoreManifestBytes = 8L * 1024L * 1024L
-private const val MaxRestoreManifestItems = 5_000
 
-private suspend fun createBackup(context: Context, dao: ReceiptDao, destination: Uri, password: String): Int = withContext(Dispatchers.IO) {
-    val receipts = dao.getAll()
-    val manifest = JSONArray()
-    val zipFile = File.createTempFile("meu-ponto-backup-", ".zip", context.cacheDir)
-    try {
-        ZipOutputStream(BufferedOutputStream(zipFile.outputStream())).use { zip ->
-            receipts.forEach { receipt ->
-                val source = File(receipt.imagePath)
-                if (!source.isFile) return@forEach
-                val imageEntry = "images/${receipt.id}.jpg"
-                zip.putNextEntry(ZipEntry(imageEntry))
-                source.inputStream().use { input -> input.copyTo(zip) }
-                zip.closeEntry()
-                manifest.put(
-                    JSONObject()
-                        .put("capturedAt", receipt.capturedAt)
-                        .put("workDate", receipt.workDate)
-                        .put("workTime", receipt.workTime)
-                        .put("entryTime", receipt.entryTime ?: "")
-                        .put("exitTime", receipt.exitTime ?: "")
-                        .put("needsReview", receipt.needsReview)
-                        .put("recognizedText", receipt.recognizedText)
-                        .put("imageEntry", imageEntry)
-                )
-            }
-            zip.putNextEntry(ZipEntry("manifest.json"))
-            zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
-            zip.closeEntry()
-        }
-        if (password.isBlank()) {
-            context.contentResolver.openOutputStream(destination)?.use { output ->
-                zipFile.inputStream().use { it.copyTo(output) }
-            } ?: error("Destino de backup indisponível")
-        } else {
-            encryptBackup(zipFile, context, destination, password)
-        }
-        manifest.length()
-    } finally {
-        zipFile.delete()
-    }
-}
 
-private suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: Uri, password: String): Int = withContext(Dispatchers.IO) {
-    val restoreDir = File(context.cacheDir, "restore_${System.currentTimeMillis()}").apply { mkdirs() }
-    val zipFile = File.createTempFile("meu-ponto-restore-", ".zip", context.cacheDir)
-    try {
-        decryptOrCopyBackup(context, sourceUri, zipFile, password)
-        zipFile.inputStream().use { input ->
-            ZipInputStream(BufferedInputStream(input)).use { zip ->
-                var entries = 0
-                while (true) {
-                    val entry = zip.nextEntry ?: break
-                    entries++
-                    if (entries > MaxRestoreZipEntries) error("Backup excede o limite de arquivos")
-                    if (!entry.isDirectory &&
-                        entry.name != "manifest.json" &&
-                        !entry.name.startsWith("images/")
-                    ) {
-                        error("Backup com arquivo inesperado")
-                    }
-                    val maximumBytes = when {
-                        entry.isDirectory -> 0L
-                        entry.name == "manifest.json" -> MaxRestoreManifestBytes
-                        else -> MaxRestoreImageBytes
-                    }
-                    if (entry.size > maximumBytes) error("Backup excede o tamanho permitido")
-                    val target = File(restoreDir, entry.name)
-                    val rootPath = restoreDir.canonicalPath + File.separator
-                    if (!target.canonicalPath.startsWith(rootPath)) error("Backup inválido")
-                    if (entry.isDirectory) {
-                        target.mkdirs()
-                    } else {
-                        target.parentFile?.mkdirs()
-                        target.outputStream().use { output ->
-                            val buffer = ByteArray(16384)
-                            var total = 0
-                            while (true) {
-                                val read = zip.read(buffer)
-                                if (read == -1) break
-                                total += read
-                                if (total > maximumBytes) error("Backup excede o tamanho permitido")
-                                output.write(buffer, 0, read)
-                            }
-                        }
-                    }
-                    zip.closeEntry()
-                }
-            }
-        } ?: error("Arquivo de backup indisponível")
 
-        val manifestFile = File(restoreDir, "manifest.json")
-        if (!manifestFile.isFile) error("Manifesto do backup ausente")
-        val items = JSONArray(manifestFile.readText(Charsets.UTF_8))
-        if (items.length() > MaxRestoreManifestItems) error("Backup excede o limite de registros")
-        val destinationDir = File(context.filesDir, "receipts").apply { mkdirs() }
-        val restored = buildList {
-            for (index in 0 until items.length()) {
-                val item = items.getJSONObject(index)
-                val imageSource = File(restoreDir, item.getString("imageEntry"))
-                if (!imageSource.isFile) continue
-                val candidate = Receipt(
-                    id = 0,
-                    capturedAt = item.getLong("capturedAt"),
-                    workDate = item.getString("workDate"),
-                    workTime = item.getString("workTime"),
-                    imagePath = imageSource.absolutePath,
-                    recognizedText = item.optString("recognizedText"),
-                    entryTime = item.optString("entryTime").takeIf { it.isNotBlank() },
-                    exitTime = item.optString("exitTime").takeIf { it.isNotBlank() },
-                    needsReview = item.optBoolean("needsReview", false) ||
-                        WorkStatsCalculator.parseWorkDate(item.getString("workDate")) == null
-                )
-                val alreadyRestored = dao.getByCapturedAt(candidate.capturedAt).any { existing ->
-                    existing.workDate == candidate.workDate &&
-                        existing.workTime == candidate.workTime &&
-                        existing.entryTime == candidate.entryTime &&
-                        existing.exitTime == candidate.exitTime &&
-                        existing.recognizedText == candidate.recognizedText
-                }
-                if (alreadyRestored) continue
-                val imageDestination = File(
-                    destinationDir,
-                    "restored_${candidate.capturedAt}_${System.currentTimeMillis()}_$index.jpg"
-                )
-                imageSource.copyTo(imageDestination, overwrite = true)
-                add(candidate.copy(imagePath = imageDestination.absolutePath))
-            }
-        }
-        dao.insertAll(restored)
-        restored.size
-    } finally {
-        restoreDir.deleteRecursively()
-        zipFile.delete()
-    }
-}
 
-private fun deriveBackupKey(password: String, salt: ByteArray): SecretKeySpec {
-    val spec = PBEKeySpec(password.toCharArray(), salt, BackupIterations, 256)
-    return try {
-        SecretKeySpec(
-            SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded,
-            "AES"
-        )
-    } finally {
-        spec.clearPassword()
-    }
-}
 
-private fun encryptBackup(source: File, context: Context, destination: Uri, password: String) {
-    val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
-    val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-    val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-        init(Cipher.ENCRYPT_MODE, deriveBackupKey(password, salt), GCMParameterSpec(128, iv))
-    }
-    context.contentResolver.openOutputStream(destination)?.use { output ->
-        output.write(BackupMagic)
-        output.write(byteArrayOf(BackupVersion))
-        output.write(salt)
-        output.write(iv)
-        CipherOutputStream(output, cipher).use { encrypted ->
-            source.inputStream().use { it.copyTo(encrypted) }
-        }
-    } ?: error("Destino de backup indisponível")
-}
 
-private fun decryptOrCopyBackup(context: Context, sourceUri: Uri, destination: File, password: String) {
-    context.contentResolver.openInputStream(sourceUri)?.use { input ->
-        val header = ByteArray(BackupMagic.size)
-        var read = 0
-        while (read < header.size) {
-            val count = input.read(header, read, header.size - read)
-            if (count <= 0) break
-            read += count
-        }
-        val encrypted = read == BackupMagic.size && header.contentEquals(BackupMagic)
-        if (!encrypted) {
-            destination.outputStream().use { output ->
-                output.write(header, 0, read)
-                input.copyTo(output)
-            }
-            return
-        }
-        val version = input.read()
-        if (version != BackupVersion.toInt()) error("Versão de backup não suportada")
-        val salt = ByteArray(16).also { input.readFully(it) }
-        val iv = ByteArray(12).also { input.readFully(it) }
-        if (password.isBlank()) error("Este backup precisa de uma senha")
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(Cipher.DECRYPT_MODE, deriveBackupKey(password, salt), GCMParameterSpec(128, iv))
-        }
-        try {
-            CipherInputStream(input, cipher).use { decrypted ->
-                destination.outputStream().use { output -> decrypted.copyTo(output) }
-            }
-        } catch (_: Exception) {
-            throw IllegalArgumentException("Senha incorreta ou backup danificado")
-        }
-    } ?: error("Arquivo de backup indisponível")
-}
 
-private fun java.io.InputStream.readFully(buffer: ByteArray) {
-    var offset = 0
-    while (offset < buffer.size) {
-        val count = read(buffer, offset, buffer.size - offset)
-        if (count <= 0) error("Backup incompleto")
-        offset += count
-    }
-}
-
-private suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: File): String {
-    val text = withContext(Dispatchers.IO) {
-        val image = InputImage.fromFilePath(context, Uri.fromFile(file))
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        try {
-            recognizer.process(image).await().text
-        } finally {
-            recognizer.close()
-        }
-    }
-    val date = WorkStatsCalculator.normalizeWorkDate(text)
-    val times = Regex("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b")
-        .findAll(text)
-        .mapNotNull { WorkStatsCalculator.normalizeClockTime(it.value) }
-        .toList()
-    val entry = times.getOrNull(0)
-    val exit = times.getOrNull(1)
-    val needsReview = date == null || times.isEmpty()
-
-    dao.insert(
-        Receipt(
-            capturedAt = System.currentTimeMillis(),
-            workDate = date ?: "",
-            workTime = entry ?: exit ?: "",
-            imagePath = file.absolutePath,
-            recognizedText = text,
-            entryTime = entry,
-            exitTime = exit,
-            needsReview = needsReview
-        )
-    )
-
-    return when {
-        date == null && times.isEmpty() -> "Comprovante salvo — revise data e horário."
-        date == null -> "Comprovante salvo — revise a data."
-        times.isEmpty() -> "Comprovante salvo — revise o horário."
-        else -> "Comprovante salvo — confira a data $date."
-    }
-}
-
-private fun decodePreview(path: String): Bitmap? {
-    val options = BitmapFactory.Options().apply { inSampleSize = 4 }
-    return BitmapFactory.decodeFile(path, options)
-}
-
-private fun shareAsPdf(context: Context, receipts: List<Receipt>) {
-    if (receipts.isEmpty()) return
-    try {
-        val pdf = PdfDocument()
-        if (receipts.size == 1) {
-            val receipt = receipts.first()
-            val bitmap = decodePdfBitmap(receipt.imagePath) ?: error("Imagem indisponível")
-            val footerHeight = 96
-            val pageInfo = PdfDocument.PageInfo.Builder(
-                bitmap.width.coerceAtLeast(1),
-                bitmap.height.coerceAtLeast(1) + footerHeight,
-                1
-            ).create()
-            val page = pdf.startPage(pageInfo)
-            page.canvas.drawColor(android.graphics.Color.WHITE)
-            page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-            drawPdfReceiptInfo(
-                canvas = page.canvas,
-                receipt = receipt,
-                left = 24f,
-                baseline = bitmap.height + 34f,
-                textSize = 24f,
-                includeFooter = true
-            )
-            pdf.finishPage(page)
-            bitmap.recycle()
-        } else {
-            val pageWidth = 1200f
-            val pageHeight = 1697f
-            val margin = 36f
-            val gap = 24f
-            val slotHeight = (pageHeight - (margin * 2) - gap) / 2f
-            val infoHeight = 48f
-            receipts.chunked(2).forEachIndexed { pageIndex, pageReceipts ->
-                val pageInfo = PdfDocument.PageInfo.Builder(pageWidth.toInt(), pageHeight.toInt(), pageIndex + 1).create()
-                val page = pdf.startPage(pageInfo)
-                page.canvas.drawColor(android.graphics.Color.WHITE)
-                pageReceipts.forEachIndexed { slotIndex, receipt ->
-                    val bitmap = decodePdfBitmap(receipt.imagePath) ?: error("Imagem indisponível")
-                    val top = margin + (slotIndex * (slotHeight + gap))
-                    val target = fitBitmapRect(bitmap, margin, top, pageWidth - margin, top + slotHeight - infoHeight)
-                    page.canvas.drawBitmap(bitmap, null, target, null)
-                    drawPdfReceiptInfo(
-                        canvas = page.canvas,
-                        receipt = receipt,
-                        left = margin,
-                        baseline = top + slotHeight - 18f,
-                        textSize = 20f,
-                        includeFooter = false
-                    )
-                    bitmap.recycle()
-                }
-                pdf.finishPage(page)
-            }
-        }
-        val outDir = File(context.cacheDir, "shared").apply { mkdirs() }
-        val fileName = if (receipts.size == 1) {
-            "comprovante_${receipts.first().workDate.replace('/', '-')}.pdf"
-        } else {
-            "meu-ponto_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())}.pdf"
-        }
-        val outFile = File(outDir, fileName)
-        try {
-            outFile.outputStream().use { pdf.writeTo(it) }
-        } finally {
-            pdf.close()
-        }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", outFile)
-        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-            type = "application/pdf"
-            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val chooserTitle = if (receipts.size == 1) "Compartilhar comprovante" else "Compartilhar comprovantes"
-        context.startActivity(android.content.Intent.createChooser(intent, chooserTitle))
-    } catch (error: Exception) {
-        Toast.makeText(context, "Falha ao gerar PDF", Toast.LENGTH_LONG).show()
-    }
-}
-
-private fun drawPdfReceiptInfo(
-    canvas: Canvas,
-    receipt: Receipt,
-    left: Float,
-    baseline: Float,
-    textSize: Float,
-    includeFooter: Boolean
-) {
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.DKGRAY
-        this.textSize = textSize
-        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-    }
-    val duration = WorkStatsCalculator.durationMinutes(receipt)?.let { " · ${formatMinutes(it)}" }.orEmpty()
-    val review = if (receipt.needsReview) " · Revisar" else ""
-    canvas.drawText(
-        "${receipt.workDate.ifBlank { "Data pendente" }} · ${receiptTimeLabel(receipt)}$duration$review",
-        left,
-        baseline,
-        paint
-    )
-    if (includeFooter) {
-        paint.textSize = textSize * .78f
-        paint.color = android.graphics.Color.GRAY
-        canvas.drawText("Meu Ponto · arquivo local", left, baseline + textSize + 10f, paint)
-    }
-}
-
-private fun fitBitmapRect(bitmap: Bitmap, left: Float, top: Float, right: Float, bottom: Float): RectF {
-    val scale = minOf((right - left) / bitmap.width, (bottom - top) / bitmap.height)
-    val width = bitmap.width * scale
-    val height = bitmap.height * scale
-    val offsetX = left + ((right - left) - width) / 2f
-    val offsetY = top + ((bottom - top) - height) / 2f
-    return RectF(offsetX, offsetY, offsetX + width, offsetY + height)
-}
-
-private fun decodePdfBitmap(path: String): Bitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(path, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-    var sample = 1
-    while (bounds.outWidth / sample > 2200 || bounds.outHeight / sample > 2200) sample *= 2
-    return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
-}
-
-private val AppTypography = androidx.compose.material3.Typography(
-    displaySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 40.sp, letterSpacing = (-0.5).sp),
-    headlineSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 32.sp),
-    titleLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp),
-    titleMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 22.sp),
-    bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 14.sp, lineHeight = 20.sp),
-    bodySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 12.sp, lineHeight = 18.sp),
-    labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp),
-    labelMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 14.sp)
-)
-
-@Composable
-private fun MeuPontoTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) {
-            androidx.compose.material3.darkColorScheme(
-                primary = Color(0xFF74D9C6),
-                onPrimary = Color(0xFF00382F),
-                primaryContainer = Color(0xFF075448),
-                onPrimaryContainer = Color(0xFF9AF5E2),
-                secondary = Color(0xFFFFA38F),
-                onSecondary = Color(0xFF4A160D),
-                tertiary = Color(0xFF9BDCCB),
-                background = Color(0xFF0C141A),
-                onBackground = Color(0xFFE8F0ED),
-                surface = Color(0xFF121E25),
-                onSurface = Color(0xFFE8F0ED),
-                surfaceVariant = Color(0xFF203038),
-                onSurfaceVariant = Color(0xFFB6C7C2),
-                outline = Color(0xFF42565D)
-            )
-        } else {
-            androidx.compose.material3.lightColorScheme(
-                primary = Teal,
-                onPrimary = Color.White,
-                primaryContainer = Mint,
-                onPrimaryContainer = TealDark,
-                secondary = Coral,
-                onSecondary = Ink,
-                background = Cream,
-                onBackground = Ink,
-                surface = Color.White,
-                onSurface = Ink,
-                surfaceVariant = Mist,
-                onSurfaceVariant = InkSoft,
-                outline = Line
-            )
-        },
-        typography = AppTypography,
-        shapes = androidx.compose.material3.Shapes(small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(26.dp)),
-        content = content
-    )
-}
