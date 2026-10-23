@@ -1,5 +1,7 @@
 # Plano do próximo release — v0.5.1
 
+_Status: **publicado** em 23/10/2026 como `v0.5.1` (release `Latest`, run `39910556532`). Este documento fica como registro do processo._
+
 _Análise feita em 23/10/2026. Base: `main` no commit `af365ba` (sincronizado com `origin/main`)._
 
 Este documento registra o que falta para publicar o próximo release e serve de checklist para
