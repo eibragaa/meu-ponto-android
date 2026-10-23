@@ -1,86 +1,84 @@
-# Meu Ponto — Android nativo
+# Meu Ponto
 
-Aplicativo Android nativo para arquivar, pesquisar e compartilhar comprovantes de ponto.
+App Android nativo (Kotlin + Compose) para arquivar, pesquisar e compartilhar comprovantes de ponto.
+Tudo fica no aparelho: sem conta, sem nuvem, sem anúncio.
+
+## Recursos
+
+- Captura pelo Document Scanner do ML Kit (recorte e correção de perspectiva) ou pela galeria, com
+  OCR local que preenche data e horários.
+- Um comprovante pode ter entrada e saída, apenas uma batida, ou um horário sem tipo.
+- Horas por dia com pareamento entre comprovantes e entre dias (turno noturno), resumo do período de
+  folha configurável e tela de insights.
+- Lista hierárquica (mês, dia ou semana), busca, filtros, miniaturas e visualizador com zoom.
+- Exportação em PDF (um ou vários comprovantes) e backup ZIP com senha opcional.
+- Tema claro/escuro persistente, splash nativa e atualização in-app no flavor `github`.
 
 ## Stack
-- Kotlin + Jetpack Compose
-- Room para metadados locais
-- ML Kit Document Scanner para captura automática, recorte e correção de documentos
-- ML Kit Text Recognition para OCR no aparelho
-- Android SplashScreen para uma entrada rápida e consistente em light/dark
-- Atualizador in-app integrado via GitHub Releases apenas no flavor `github`; a build `play` segue a política da Play e não instala APK fora da loja
-- GitHub Actions para validar builds e publicar Releases por tag `v*`
+
+Kotlin · Jetpack Compose (Material 3) · Room · ML Kit (Document Scanner + Text Recognition) ·
+SplashScreen · GitHub Actions · `minSdk 26`, `target/compileSdk 36`.
 
 ## Como o código é organizado
 
-O padrão de engenharia do projeto vale para qualquer pessoa ou agente de IA e está em
-[`docs/engineering-standards.md`](docs/engineering-standards.md) (resumo executável em
-[`AGENTS.md`](AGENTS.md)). Em uma frase: UI em `MainActivity.kt` + `ui/` (sem I/O), regras em
-`domain/` (puras e testadas) e todo I/O em `data/` (Room, OCR, backup, PDF).
+`MainActivity.kt` e `ui/` compõem a tela (sem I/O), `domain/` tem as regras puras e testadas, `data/`
+concentra Room, OCR, backup e PDF, e `updater/` cuida da atualização in-app.
 
-## Estado atual
-O app agora tem uma interface premium com identidade própria, tema claro/escuro persistente, splash nativa, scanner de documentos com captura automática, detecção de bordas, correção de perspectiva, importação da galeria, OCR local, revisão manual de data/horário reconhecidos, agrupamento por mês, dia ou semana, persistência em Room, busca, miniaturas e exportação de um ou vários comprovantes em PDF. Cada comprovante pode registrar entrada e saída, ou apenas uma batida; as horas são calculadas por dia quando há pares completos. O card principal mostra o período de folha configurável, horas trabalhadas, dias restantes para o fechamento e pendências, com uma tela de insights calculada localmente. A lista é hierárquica por mês e dia, e o toque no comprovante abre um visualizador com zoom, metadados, edição, PDF e exclusão. Quando o OCR não encontra data ou horário, os campos de edição exibem exemplos como `22/10/2026` e `10:20`, com máscara automática, sem gravar valores fictícios. Na exportação em lote, dois comprovantes são organizados por página; a exportação individual continua disponível. Filtros e agrupamento ficam dentro de “Organizar” para manter a tela principal limpa. O scanner funciona no dispositivo pelo Google Play Services e não exige que o Meu Ponto peça permissão direta da câmera. O backup exportável inclui imagens, datas, horários, entrada/saída e OCR em um ZIP; agora pode ser protegido por senha e restaurado pelo seletor do Android, inclusive escolhendo o Google Drive como destino.
+O padrão completo está em [`docs/engineering-standards.md`](docs/engineering-standards.md); o resumo
+executável para agentes de IA está em [`AGENTS.md`](AGENTS.md).
 
-Limites conhecidos para a distribuição final:
-- A build local e o pipeline estão preparados para API 36, mas a assinatura de produção ainda depende de um keystore seu configurado nos Secrets do GitHub.
-- A sincronização automática e incremental em segundo plano no Google Drive exige configurar OAuth no Google Cloud, incluindo o cliente Android e o SHA-1/SHA-256 do certificado de assinatura.
-- O OCR de data/horário continua exigindo revisão humana; o app não deve ser tratado como registro trabalhista oficial sem essa conferência.
-- O workflow continua publicando uma build debug nomeada para testes; a publicação na Play Store exige gerar um AAB release assinado.
+## Começando
 
-## Identidade visual
+Requisitos: JDK 17, Android SDK 36 e o `local.properties` apontando para o SDK (esse arquivo não vai
+para o git). Abra a raiz no Android Studio, aguarde a sincronização e rode a variante `playDebug`.
 
-O sistema de marca, logotipo, cores, tipografia, voz e regras de acessibilidade está documentado em [`docs/brand-book.md`](docs/brand-book.md). O app usa a assinatura visual “Clareza para sua jornada”, com Ink, Teal, Mint, Coral e fundo Cream.
+Pelo terminal:
 
-## Desenvolvimento local
-1. Instale/abra o Android Studio com JDK 17.
-2. Abra a pasta raiz deste projeto (`meu-ponto-android`) no Android Studio.
-3. Aguarde a sincronização do Gradle e aceite a instalação do Android SDK 36 se for solicitada.
-4. Conecte um aparelho com depuração USB autorizada ou crie um emulador.
-5. Selecione a variante `playDebug`, usada como base da Play Store, e execute a configuração `app`.
-
-Pelo terminal do Windows, com `ANDROID_HOME` apontando para o SDK, também é possível executar:
-
-```powershell
-.\gradlew.bat :app:assemblePlayDebug
-```
-
-Os builds quentes agora usam dois flavors de distribuição:
-- `play`: build da Play Store, sem instabilidade de sideload e sem `REQUEST_INSTALL_PACKAGES`.
-- `github`: build com atualizador in-app pelo GitHub Releases.
-
-O APK ficará em `app/build/outputs/apk/play/debug/app-play-debug.apk`. O `local.properties` é específico do computador e não deve ser enviado ao GitHub. Use este caminho para instalar uma variante de teste sem conflitar com a instalação oficial:
-
-```powershell
-.\gradlew.bat :app:assemblePlayDebug "-PlocalTestSuffix=.localtest" --no-daemon
+```bash
+./gradlew :app:assemblePlayDebug
 adb install -r app/build/outputs/apk/play/debug/app-play-debug.apk
 ```
 
-## Dados no aparelho e backup automático
-O Meu Ponto não salva nem sincroniza dados automaticamente via Android Auto Backup/Drive Backup. O comprovante, o banco Room, cache e miniaturas ficam fora do backup de sistema. Isso evita que imagens sensíveis voltem em outra conta ou aparelho. O usuário é responsável por exportar/restaurar manualmente pelo backup ZIP do app, que pode ser protegido por senha.
+## Builds
 
-## Testar a versão release localmente
-Gera o build com R8 e recursos reduzidos, igual ao que vai para a Play, antes de enviar ao Git:
+| Comando | Resultado |
+|---|---|
+| `:app:assemblePlayDebug` | APK de desenvolvimento |
+| `:app:assembleGithubRelease` | APK assinado, com updater in-app |
+| `:app:bundlePlayRelease` | AAB assinado para a Play |
+| `:app:testPlayDebugUnitTest` | testes JVM (sem emulador) |
+| `:app:lintPlayDebug` | lint |
 
-```powershell
-.\gradlew.bat :app:assemblePlayRelease "-PlocalTestSuffix=.localtest" --no-daemon
-adb install -r app/build/outputs/apk/play/release/app-play-release.apk
-```
+Dois flavors de distribuição: `play` (sem updater e sem `REQUEST_INSTALL_PACKAGES`) e `github` (com
+atualizador via GitHub Releases). Para instalar em paralelo com a versão oficial, use
+`-PlocalTestSuffix=.localtest` — o `applicationId` ganha o sufixo e os dados ficam separados.
 
-Sem o keystore de produção, o APK sai assinado com a chave debug. Isso serve só para teste local: nunca envie esse APK à Play. Com o keystore configurado (variáveis `ANDROID_KEYSTORE_*`), o mesmo comando gera o APK assinado para produção.
+## Release
 
-## Publicar um APK no GitHub Releases
-Depois de enviar o projeto ao GitHub, crie e envie uma tag, por exemplo:
+Empurre uma tag `vX.Y.Z` **igual** ao `versionName` do `app/build.gradle.kts`:
 
 ```bash
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.5.1 && git push origin v0.5.1
 ```
 
-O pipeline `.github/workflows/android-release.yml` usa o Gradle Wrapper, compila o APK debug do flavor `play`, renomeia o artefato para `Meu-Ponto-vX.Y.Z.apk` e o anexa ao Release da tag. O APK é apropriado para testes; antes de distribuir publicamente, configure a chave de release permanente e o bundle `playRelease` para preservar a assinatura entre versões e usar o Play App Signing.
+O workflow `.github/workflows/android-release.yml` (tag `v*` ou execução manual) roda testes e lint,
+assina com o keystore dos Secrets e publica o Release com o APK do flavor `github` e o AAB do `play`.
+Sem o keystore, um build local sai assinado com a chave debug — serve só para teste, nunca para
+distribuir. Versão, tag e release são decisão do dono do projeto.
 
-## Publicação e privacidade
+## Dados e privacidade
 
-O checklist técnico e de dados está em [`docs/google-play-readiness.md`](docs/google-play-readiness.md). A política de privacidade que deve ser hospedada em uma URL pública está em [`docs/privacy-policy.md`](docs/privacy-policy.md) como base revisável; ela não substitui a configuração final no Play Console.
+Sem Android Auto Backup/Drive Backup: banco Room, imagens e cache ficam fora do backup do sistema.
+O usuário exporta e restaura pelo backup ZIP do app (senha opcional). A sincronização automática com
+o Drive ainda não existe: exige OAuth no Google Cloud (cliente Android, SHA-1/SHA-256 do certificado)
+e credenciais fora do repositório.
 
-## Backup no Google Drive
-O app já exporta e restaura um backup ZIP pelo seletor de documentos do Android. Para usar o Google Drive agora, escolha-o como destino ao criar o arquivo. A sincronização automática, incremental e silenciosa no estilo WhatsApp é uma etapa separada: exige OAuth no Google Cloud (cliente Android, SHA-1/SHA-256 do certificado e escopos do Drive), política de conflitos e Secrets/configuração fora do repositório. Essas credenciais não devem ser colocadas no GitHub.
+[Política de privacidade](docs/privacy-policy.md) · [Checklist de produção](docs/google-play-readiness.md)
+
+## Documentação
+
+- [Padrão de engenharia](docs/engineering-standards.md) — camadas, nomenclatura, testes, git e release
+- [Status e próximos passos](docs/status-e-proximos-passos.md)
+- [Roadmap para a Play Store](docs/roadmap-aaa.md)
+- [Brand book](docs/brand-book.md)
+- [Plano de correções do editor](docs/plan-correcoes-editor.md)

@@ -232,10 +232,14 @@ style         formatação/reformatação (sem mudança lógica)
 ./gradlew :app:bundlePlayRelease                 # AAB para a Play
 ```
 
-**CI** (`.github/workflows/android-release.yml`): push na `main` roda testes + lint e publica
-artefatos; tag `v*` publica Release — a tag **precisa** bater com `versionName` no
-`app/build.gradle.kts`, e a assinatura vem dos Secrets
-(`ANDROID_KEYSTORE_PATH/PASSWORD`, `ANDROID_KEY_ALIAS/PASSWORD`).
+**CI** (`.github/workflows/android-release.yml`): roda **em tag `v*` ou manualmente**
+(`workflow_dispatch`) — não em todo push. Etapas: testes das duas flavors, lint, build do APK
+`githubRelease` e do AAB `playRelease` assinados, e publicação do Release quando a ref é uma tag.
+A tag **precisa** bater com `versionName` do `app/build.gradle.kts` (há checagem no workflow), e a
+assinatura vem dos Secrets:
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+Secrets ausentes em build de tag = falha explícita; em build manual, APK sai com chave debug (não
+distribuir).
 
 **Versionamento**: `versionName` semântico (`0.5.1`) + `versionCode` inteiro crescente. Mudança de
 versão/tag/release só com autorização explícita do dono do projeto.
