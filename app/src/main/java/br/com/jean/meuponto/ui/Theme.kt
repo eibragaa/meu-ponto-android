@@ -27,6 +27,14 @@ internal val Mist = Color(0xFFE9EFEC)
 internal val Line = Color(0xFFD6E0DB)
 internal val Muted = Color(0xFF6B7773)
 
+// Destaque do resumo do período ("hero"): no claro usa Ink/TealDark, no escuro usa estes tons.
+// Ficam aqui para o composable não espalhar hex solto (regra de tokens do projeto).
+internal val HeroNightTop = Color(0xFF14242C)
+internal val HeroNightBottom = Color(0xFF0D4C47)
+internal val HeroNightText = Color(0xFFF1F8F5)
+internal val HeroNightMuted = Color(0xFFB8CCC7)
+internal val HeroNightNumber = Color(0xFF8BE3D2)
+
 /**
  * Escala tipográfica do app: uma fonte só (sans-serif do sistema) e tamanhos fixos por papel,
  * para que o MaterialTheme aplique a mesma hierarquia em todas as telas.
@@ -36,6 +44,7 @@ private val AppTypography = androidx.compose.material3.Typography(
     headlineSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 32.sp),
     titleLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp),
     titleMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 22.sp),
+    titleSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp),
     bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 16.sp, lineHeight = 24.sp),
     bodyMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 14.sp, lineHeight = 20.sp),
     bodySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 12.sp, lineHeight = 18.sp),

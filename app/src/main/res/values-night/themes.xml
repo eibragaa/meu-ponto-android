@@ -1,7 +1,8 @@
 <resources>
     <style name="Theme.MeuPonto.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#0C141A</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_meu_ponto_logo</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_brand_glyph</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>
         <item name="postSplashScreenTheme">@style/Theme.MeuPonto</item>
     </style>
 </resources>

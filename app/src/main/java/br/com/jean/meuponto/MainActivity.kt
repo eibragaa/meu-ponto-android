@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -142,6 +143,11 @@ import br.com.jean.meuponto.domain.receiptTimeLabel
 import br.com.jean.meuponto.ui.Coral
 import br.com.jean.meuponto.ui.DaySection
 import br.com.jean.meuponto.ui.DeleteReceiptDialog
+import br.com.jean.meuponto.ui.HeroNightBottom
+import br.com.jean.meuponto.ui.HeroNightMuted
+import br.com.jean.meuponto.ui.HeroNightNumber
+import br.com.jean.meuponto.ui.HeroNightText
+import br.com.jean.meuponto.ui.HeroNightTop
 import br.com.jean.meuponto.ui.Ink
 import br.com.jean.meuponto.ui.InsightsSheet
 import br.com.jean.meuponto.ui.MeuPontoTheme
@@ -817,14 +823,10 @@ private fun SummaryCard(
     onConfigure: () -> Unit,
     onInsights: () -> Unit
 ) {
-    val heroGradient = if (isDarkTheme) {
-        listOf(Color(0xFF14242C), Color(0xFF0D4C47))
-    } else {
-        listOf(Ink, TealDark)
-    }
-    val heroText = if (isDarkTheme) Color(0xFFF1F8F5) else Color.White
-    val heroMuted = if (isDarkTheme) Color(0xFFB8CCC7) else Color.White.copy(alpha = .70f)
-    val heroNumber = if (isDarkTheme) Color(0xFF8BE3D2) else Mint
+    val heroGradient = if (isDarkTheme) listOf(HeroNightTop, HeroNightBottom) else listOf(Ink, TealDark)
+    val heroText = if (isDarkTheme) HeroNightText else Color.White
+    val heroMuted = if (isDarkTheme) HeroNightMuted else Color.White.copy(alpha = .70f)
+    val heroNumber = if (isDarkTheme) HeroNightNumber else Mint
     val totalDays = ChronoUnit.DAYS.between(stats.periodStart, stats.periodEnd).toInt() + 1
     val elapsedDays = (ChronoUnit.DAYS.between(stats.periodStart, LocalDate.now()).toInt() + 1)
         .coerceIn(0, totalDays.coerceAtLeast(0))
@@ -971,7 +973,7 @@ private fun OrganizeSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(
-            Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            Modifier.imePadding().navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text("Organizar arquivo", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
@@ -1036,10 +1038,13 @@ private fun SectionHeader(
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-        Spacer(Modifier.width(8.dp))
-        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp)) {
-            Text(count.toString(), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        }
+        // Contagem discreta: um chip aqui competia com o botão "Organizar" e parecia ação.
+        Text(
+            "· $count",
+            Modifier.padding(start = 6.dp),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(Modifier.weight(1f))
         if (isSelectionMode) {
             TextButton(onClick = onExport, enabled = selectedCount > 0) {
@@ -1083,7 +1088,8 @@ private fun MonthHeader(
             Icon(
                 if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                 contentDescription = if (expanded) "Recolher mês" else "Expandir mês",
-                tint = MaterialTheme.colorScheme.primary
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -1096,8 +1102,8 @@ private fun DayHeader(
     onToggle: () -> Unit
 ) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 4.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top
     ) {
         Column(Modifier.weight(1f)) {
             Text(
@@ -1124,7 +1130,8 @@ private fun DayHeader(
         if (day.pending) {
             Surface(
                 color = MaterialTheme.colorScheme.errorContainer,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.padding(top = 1.dp)
             ) {
                 Text(
                     "Revisar",
@@ -1137,7 +1144,8 @@ private fun DayHeader(
         } else if (day.occurrences.isNotEmpty()) {
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.padding(top = 1.dp)
             ) {
                 Text(
                     dayOccurrenceSummary(day.occurrences),
@@ -1151,7 +1159,8 @@ private fun DayHeader(
         Icon(
             if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
             contentDescription = if (expanded) "Recolher dia" else "Expandir dia",
-            tint = MaterialTheme.colorScheme.primary
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 1.dp).size(20.dp)
         )
     }
 }
@@ -1405,7 +1414,7 @@ private fun BackupPasswordDialog(action: String, onDismiss: () -> Unit, onConfir
     val isCreate = action == "create"
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(
-            Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            Modifier.imePadding().navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(if (isCreate) "Proteger backup" else "Abrir backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
@@ -1521,6 +1530,7 @@ private fun EditReceiptSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(
             Modifier
+                .imePadding()
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),

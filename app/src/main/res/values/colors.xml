@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cor de fundo do ícone do launcher e do splash: coral da marca, igual em claro e escuro. -->
+    <color name="ic_launcher_background">#FF8A72</color>
+</resources>
