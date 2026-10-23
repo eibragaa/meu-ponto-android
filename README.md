@@ -82,6 +82,7 @@ e credenciais fora do repositório.
 - [Plano do release v0.5.1 (publicado)](docs/plano-release-v0.5.1.md)
 - [Modelo de release notes](docs/release-notes-template.md)
 - [Plano da feature de atualização ao abrir](docs/plano-feature-atualizacao-ao-abrir.md)
+- [Plano da feature de swipe para apagar](docs/plano-feature-swipe-delete.md)
 - [Roadmap para a Play Store](docs/roadmap-aaa.md)
 - [Brand book](docs/brand-book.md)
 - [Plano de correções do editor](docs/plan-correcoes-editor.md)
