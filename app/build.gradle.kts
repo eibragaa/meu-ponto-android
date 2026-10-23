@@ -28,8 +28,8 @@ android {
         applicationId = "br.com.jean.meuponto$localTestSuffix"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.6.0"
+        versionCode = 11
+        versionName = "0.6.1"
     }
     buildFeatures { compose = true; buildConfig = true }
     flavorDimensions += "distribution"
