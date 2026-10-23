@@ -11,6 +11,13 @@ Aplicativo Android nativo para arquivar, pesquisar e compartilhar comprovantes d
 - Atualizador in-app integrado via GitHub Releases apenas no flavor `github`; a build `play` segue a política da Play e não instala APK fora da loja
 - GitHub Actions para validar builds e publicar Releases por tag `v*`
 
+## Como o código é organizado
+
+O padrão de engenharia do projeto vale para qualquer pessoa ou agente de IA e está em
+[`docs/engineering-standards.md`](docs/engineering-standards.md) (resumo executável em
+[`AGENTS.md`](AGENTS.md)). Em uma frase: UI em `MainActivity.kt` + `ui/` (sem I/O), regras em
+`domain/` (puras e testadas) e todo I/O em `data/` (Room, OCR, backup, PDF).
+
 ## Estado atual
 O app agora tem uma interface premium com identidade própria, tema claro/escuro persistente, splash nativa, scanner de documentos com captura automática, detecção de bordas, correção de perspectiva, importação da galeria, OCR local, revisão manual de data/horário reconhecidos, agrupamento por mês, dia ou semana, persistência em Room, busca, miniaturas e exportação de um ou vários comprovantes em PDF. Cada comprovante pode registrar entrada e saída, ou apenas uma batida; as horas são calculadas por dia quando há pares completos. O card principal mostra o período de folha configurável, horas trabalhadas, dias restantes para o fechamento e pendências, com uma tela de insights calculada localmente. A lista é hierárquica por mês e dia, e o toque no comprovante abre um visualizador com zoom, metadados, edição, PDF e exclusão. Quando o OCR não encontra data ou horário, os campos de edição exibem exemplos como `22/10/2026` e `10:20`, com máscara automática, sem gravar valores fictícios. Na exportação em lote, dois comprovantes são organizados por página; a exportação individual continua disponível. Filtros e agrupamento ficam dentro de “Organizar” para manter a tela principal limpa. O scanner funciona no dispositivo pelo Google Play Services e não exige que o Meu Ponto peça permissão direta da câmera. O backup exportável inclui imagens, datas, horários, entrada/saída e OCR em um ZIP; agora pode ser protegido por senha e restaurado pelo seletor do Android, inclusive escolhendo o Google Drive como destino.
 

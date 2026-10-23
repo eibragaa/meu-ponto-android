@@ -169,12 +169,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 
-
-
-
-
-
-
 /**
  * Tela principal do app.
  *
@@ -238,6 +232,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val scope = rememberCoroutineScope()
     val dao = remember { AppDatabase.get(context).receiptDao() }
     val snackbarHostState = remember { SnackbarHostState() }
+
     // Busca e organização da lista: em `rememberSaveable` para sobreviver a rotação e à recriação
     // do processo.
     var query by rememberSaveable { mutableStateOf("") }
@@ -1568,13 +1563,5 @@ private fun MeuPontoMark(modifier: Modifier, compact: Boolean = false) {
         }
     }
 }
-
-
-
-
-
-
-
-
 
 
