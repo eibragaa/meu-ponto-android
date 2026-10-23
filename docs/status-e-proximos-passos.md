@@ -118,6 +118,18 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
   “O que há de novo” no aparelho.
 - **Pendente:** teste visual no aparelho.
 
+### 1.15 Motivo do “Revisar” no cabeçalho do dia (23/10/2026)
+- `WorkDayStats` passou a expor `issues: List<DayIssue>`; `pending` virou derivado
+  (`issues.isNotEmpty()`), mantendo uma única fonte para a regra.
+- Motivos: data não reconhecida, jornada inválida (0 min ou acima de 16h), horário sem entrada/saída,
+  entrada sem saída e saída sem entrada. “Comprovante marcado para revisão” só aparece quando não há
+  motivo mais específico, para o cabeçalho não repetir a mesma dúvida.
+- O cabeçalho do dia mostra o motivo em vermelho abaixo de “N comprovantes · Xh” e mantém o selo
+  “Revisar”.
+- 16 testes novos (`WorkStatsCalculatorTest` e `DayIssueSummaryTest`): 108 no total, em 10 arquivos.
+- **Não validado no ambiente:** o Termux não tem Android SDK/Gradle; testes, lint e build precisam
+  rodar no PC ou no CI.
+
 ---
 
 ## 2. Estado atual do código
@@ -132,7 +144,7 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 | Restore | Implementado, com checagem de duplicata por `capturedAt` |
 | Room | v2, schema exportado. Migração 1→2 sem teste automatizado |
 | R8 em release | Ativado, sem regras extras. Testado só no WSA (fluxo completo não rodado) |
-| Testes unitários | 93 testes em 9 arquivos, incluindo updater/parser/coordinator/checksum. Backup/PDF/DAO ainda sem teste |
+| Testes unitários | 108 testes em 10 arquivos, incluindo updater/parser/coordinator/checksum e motivos de revisão do dia. Backup/PDF/DAO ainda sem teste |
 | Strings | Hardcoded em pt-BR. Sem `strings.xml` |
 | Arquitetura | `MainActivity.kt` + camadas `domain/`, `data/`, `ui/`, `updater/` com `UpdateCoordinator`. Sem ViewModel nem Repository |
 | Padrão de engenharia | [`engineering-standards.md`](engineering-standards.md) + [`AGENTS.md`](../AGENTS.md). Pendências `ENG-1` a `ENG-6` |
@@ -226,7 +238,7 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 | P17 | Updater: instalação falha com assinatura diferente, e o erro aparece só depois do Play Protect | Usuário sem clareza sobre a migração | Mostrar mensagem de assinatura diferente antes de abrir o instalador (melhoria no updater) |
 | P18 | Editor de horário: ao digitar, o cursor voltava e os dígitos entravam fora de ordem (ex.: "22:34" em vez de "22:43") | Dados errados ao editar | **Corrigido e publicado na `v0.5.1`**: campo guarda o cursor e vai para o fim após a máscara |
 | P19 | Editor: "Só entrada" ou "Só saída" salvava também o outro horário (ex.: entrada e saída iguais para um comprovante só com horário) | Horas e pendências erradas | **Corrigido e publicado na `v0.5.1`**: só salva o tipo escolhido |
-| P20 | "Revisar" no cabeçalho do dia não explica o motivo (ex.: saída sem entrada no dia anterior). O aviso no card some ao salvar, mas o dia continua pendente | Usuário acha que não salvou | Mostrar o motivo no cabeçalho (ex.: "saída sem entrada") ou por comprovante |
+| P20 | "Revisar" no cabeçalho do dia não explica o motivo (ex.: saída sem entrada no dia anterior). O aviso no card some ao salvar, mas o dia continua pendente | Usuário acha que não salvou | **Corrigido**: `WorkDayStats.issues` + cabeçalho mostra o motivo. Falta validar no CI/aparelho |
 
 ---
 
