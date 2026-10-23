@@ -70,10 +70,14 @@ private fun formatFileSize(bytes: Long): String {
 fun UpdateDialog(
     updateInfo: AppUpdateInfo,
     currentVersion: String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onInstallerReady: (AppUpdateInfo) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val releaseUrl = updateInfo.releaseUrl.ifBlank {
+        "https://github.com/${AppUpdater.GITHUB_OWNER}/${AppUpdater.GITHUB_REPO}"
+    }
     var downloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
 
@@ -162,6 +166,20 @@ fun UpdateDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+
+                TextButton(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(releaseUrl)))
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.OpenInBrowser,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Ver no GitHub")
                 }
 
                 when (val state = downloadState) {
@@ -268,6 +286,7 @@ fun UpdateDialog(
                                         }
                                     )
                                     downloadState = UpdateDownloadState.ReadyToInstall(file)
+                                    onInstallerReady(updateInfo)
                                     if (AppUpdater.canInstallUnknownApps(context)) {
                                         AppUpdater.launchInstaller(context, file)
                                     }

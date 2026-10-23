@@ -84,6 +84,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -114,6 +115,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import br.com.jean.meuponto.BuildConfig
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
@@ -140,6 +143,8 @@ import br.com.jean.meuponto.ui.PayrollSettingsSheet
 import br.com.jean.meuponto.ui.PtBrLocale
 import br.com.jean.meuponto.ui.ReceiptViewer
 import br.com.jean.meuponto.ui.TealDark
+import br.com.jean.meuponto.ui.UpdateBanner
+import br.com.jean.meuponto.ui.WhatsNewSheet
 import br.com.jean.meuponto.ui.buildMonthSections
 import br.com.jean.meuponto.ui.currentMonthKey
 import br.com.jean.meuponto.ui.filters
@@ -151,11 +156,10 @@ import br.com.jean.meuponto.ui.isValidWorkDate
 import br.com.jean.meuponto.ui.maskedFieldValue
 import br.com.jean.meuponto.ui.punchModes
 import br.com.jean.meuponto.updater.AboutSheet
-import br.com.jean.meuponto.updater.AppUpdateInfo
 import br.com.jean.meuponto.updater.AppUpdater
-import br.com.jean.meuponto.updater.UpdateCheckResult
 import br.com.jean.meuponto.updater.UpdateDialog
-import br.com.jean.meuponto.updater.updateFailureMessage
+import br.com.jean.meuponto.updater.UpdateRuntime
+import br.com.jean.meuponto.updater.UpdateUiState
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -167,6 +171,7 @@ import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -265,23 +270,41 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var pendingBackupPassword by remember { mutableStateOf("") }
     val updaterEnabled = BuildConfig.UPDATER_ENABLED
     val currentVersion = remember { AppUpdater.getInstalledVersionName(context) }
-    var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
-    var showUpdateDialog by rememberSaveable { mutableStateOf(false) }
+    // Processo único (UpdateRuntime) para o estado do updater sobreviver à rotação; a tela apenas
+    // observa e dispara eventos. Sem updater (flavor play), um fluxo vazio mantém o estado neutro.
+    val updateCoordinator = remember {
+        if (updaterEnabled) UpdateRuntime.get(context, currentVersion) else null
+    }
+    val emptyUpdateState = remember { MutableStateFlow(UpdateUiState()) }
+    val updateState by (updateCoordinator?.state ?: emptyUpdateState).collectAsState()
     var showAboutSheet by rememberSaveable { mutableStateOf(false) }
-    var isCheckingUpdatesManually by remember { mutableStateOf(false) }
-    var hasCheckedAutoUpdate by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         cleanupUpdateAndPdfCaches(context)
-        if (updaterEnabled && !hasCheckedAutoUpdate) {
-            hasCheckedAutoUpdate = true
-            when (val result = AppUpdater.checkForUpdates(currentVersion)) {
-                is UpdateCheckResult.Available -> {
-                    availableUpdate = result.info
-                    showUpdateDialog = true
+        updateCoordinator?.onColdStart()
+    }
+
+    // ON_START sem dependência nova: o lifecycle do ComponentActivity avisa quando o app volta ao
+    // foreground. O coordenador aplica o throttle de 30 min internamente.
+    val lifecycleOwner = context as? ComponentActivity
+    DisposableEffect(lifecycleOwner, updateCoordinator) {
+        val coordinator = updateCoordinator
+        if (lifecycleOwner != null && coordinator != null) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_START) {
+                    coordinator.onForeground()
                 }
-                is UpdateCheckResult.Failed, UpdateCheckResult.UpToDate -> Unit
             }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        } else {
+            onDispose { }
+        }
+    }
+
+    LaunchedEffect(updateState.isPromptVisible) {
+        if (updateState.isPromptVisible) {
+            showAboutSheet = false
         }
     }
 
@@ -317,20 +340,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
 
     fun checkUpdatesManually() {
-        scope.launch {
-            isCheckingUpdatesManually = true
-            val result = AppUpdater.checkForUpdates(currentVersion)
-            isCheckingUpdatesManually = false
-            when (result) {
-                is UpdateCheckResult.Available -> {
-                    availableUpdate = result.info
-                    showAboutSheet = false
-                    showUpdateDialog = true
-                }
-                is UpdateCheckResult.Failed -> showMessage(updateFailureMessage(result.reason))
-                UpdateCheckResult.UpToDate ->
-                    showMessage("Você já está na versão mais recente (v$currentVersion).")
-            }
+        updateCoordinator?.checkNow()
+    }
+
+    // A verificação manual devolve o resultado pelo estado; a tela só apresenta e consome.
+    LaunchedEffect(updateState.manualMessage) {
+        updateState.manualMessage?.let { message ->
+            showMessage(message)
+            updateCoordinator?.consumeManualMessage()
         }
     }
 
@@ -464,6 +481,16 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item { Header(isDarkTheme = isDarkTheme, onThemeClick = onToggleTheme, onBackupClick = { showBackupSheet = true }, onAboutClick = { showAboutSheet = true }) }
+            updateState.bannerVersion?.let { bannerVersion ->
+                item(key = "update-banner") {
+                    UpdateBanner(
+                        version = bannerVersion,
+                        summary = updateState.bannerSummary.orEmpty(),
+                        onShowNotes = { updateCoordinator?.showPrompt() },
+                        onDismiss = { updateCoordinator?.dismissBanner() }
+                    )
+                }
+            }
             item {
                 SummaryCard(
                     total = receipts.size,
@@ -716,12 +743,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         )
     }
 
-    if (showUpdateDialog) {
-        availableUpdate?.let { info ->
+    val coordinator = updateCoordinator
+    if (coordinator != null && updateState.isPromptVisible) {
+        updateState.available?.let { info ->
             UpdateDialog(
                 updateInfo = info,
                 currentVersion = currentVersion,
-                onDismiss = { showUpdateDialog = false }
+                onDismiss = coordinator::dismissPrompt,
+                onInstallerReady = coordinator::onInstallerReady
             )
         }
     }
@@ -729,11 +758,19 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     if (showAboutSheet) {
         AboutSheet(
             currentVersion = currentVersion,
-            isCheckingUpdate = isCheckingUpdatesManually,
+            isCheckingUpdate = updateState.isChecking,
             updaterEnabled = updaterEnabled,
             onCheckUpdate = { checkUpdatesManually() },
             onDismiss = { showAboutSheet = false },
             brandMark = { MeuPontoMark(Modifier.size(56.dp)) }
+        )
+    }
+
+    updateState.whatsNew?.let { pendingNotes ->
+        WhatsNewSheet(
+            version = pendingNotes.version,
+            notes = pendingNotes.notes,
+            onDismiss = { updateCoordinator?.dismissWhatsNew() }
         )
     }
 }
