@@ -130,6 +130,7 @@ import br.com.jean.meuponto.data.shareAsPdf
 import br.com.jean.meuponto.domain.PayrollSettingsStore
 import br.com.jean.meuponto.domain.PeriodStats
 import br.com.jean.meuponto.domain.WorkStatsCalculator
+import br.com.jean.meuponto.domain.dayIssueSummary
 import br.com.jean.meuponto.domain.formatMinutes
 import br.com.jean.meuponto.domain.receiptTimeLabel
 import br.com.jean.meuponto.ui.Coral
@@ -1107,6 +1108,15 @@ private fun DayHeader(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (day.pending) {
+                Text(
+                    dayIssueSummary(day.issues),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         if (day.pending) {
             Surface(

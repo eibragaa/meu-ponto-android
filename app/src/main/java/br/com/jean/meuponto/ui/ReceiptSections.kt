@@ -1,6 +1,7 @@
 package br.com.jean.meuponto.ui
 
 import br.com.jean.meuponto.data.Receipt
+import br.com.jean.meuponto.domain.DayIssue
 import br.com.jean.meuponto.domain.REVIEW_DATE_KEY
 import br.com.jean.meuponto.domain.WorkDayStats
 
@@ -38,8 +39,10 @@ internal data class DaySection(
     val receipts: List<Receipt>,
     val minutes: Int,
     val receiptCount: Int,
-    val pending: Boolean
-)
+    val issues: List<DayIssue>
+) {
+    val pending: Boolean get() = issues.isNotEmpty()
+}
 
 internal data class MonthSection(
     val key: String,
@@ -72,7 +75,12 @@ internal fun buildMonthSections(
                         receipts = dayReceipts,
                         minutes = dayStat?.minutes ?: 0,
                         receiptCount = dayStat?.receiptCount ?: dayReceipts.size,
-                        pending = dayStat?.pending ?: dayReceipts.any { it.needsReview }
+                        issues = dayStat?.issues
+                            ?: if (dayReceipts.any { it.needsReview }) {
+                                listOf(DayIssue.MARKED_FOR_REVIEW)
+                            } else {
+                                emptyList()
+                            }
                     )
                 }
                 .sortedWith(

@@ -11,12 +11,42 @@ import java.time.format.ResolverStyle
 import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
+/**
+ * Motivo pelo qual um dia precisa de revisão.
+ *
+ * A ordem das constantes é a ordem de exibição no cabeçalho do dia: motivos que impedem o cálculo
+ * vêm antes dos que apenas pedem conferência.
+ */
+enum class DayIssue {
+    /** A data do comprovante não foi reconhecida (vazia ou fora do formato `dd/MM/yyyy`). */
+    UNKNOWN_DATE,
+
+    /** Entrada e saída no mesmo comprovante resultam em jornada inválida (0 min ou acima de 16h). */
+    IMPLAUSIBLE_SHIFT,
+
+    /** O comprovante tem um horário solto, sem indicar se é entrada ou saída. */
+    UNTYPED_PUNCH,
+
+    /** Há uma entrada sem saída correspondente dentro do teto de 16h. */
+    MISSING_EXIT,
+
+    /** Há uma saída sem entrada anterior. */
+    MISSING_ENTRY,
+
+    /** O comprovante foi marcado para revisão ([Receipt.needsReview]), sem motivo mais específico. */
+    MARKED_FOR_REVIEW
+}
+
 data class WorkDayStats(
     val date: String,
     val minutes: Int,
     val receiptCount: Int,
-    val pending: Boolean
-)
+    /** Motivos distintos, na ordem de [DayIssue]; vazio quando o dia está consistente. */
+    val issues: List<DayIssue>
+) {
+    /** Um dia está pendente quando existe pelo menos um motivo em [issues]. */
+    val pending: Boolean get() = issues.isNotEmpty()
+}
 
 data class PeriodStats(
     val periodStart: LocalDate,
@@ -106,26 +136,32 @@ object WorkStatsCalculator {
      * 2. comprovante com apenas uma das batidas -> pareamento cronológico em [pairPunches], que
      *    credita a duração no dia da *entrada* (turno noturno conta no dia em que começou).
      *
-     * O dia fica `pending` quando alguma batida não pôde ser pareada, quando o comprovante foi
-     * marcado para revisão ([Receipt.needsReview]) ou quando a data é desconhecida
-     * ([REVIEW_DATE_KEY]).
+     * O dia fica com [WorkDayStats.pending] quando há pelo menos um [DayIssue]: batida não pareada,
+     * comprovante marcado para revisão ([Receipt.needsReview]) ou data desconhecida
+     * ([REVIEW_DATE_KEY]). O motivo fica em [WorkDayStats.issues] para a UI explicar o "Revisar".
      */
     fun dayStats(receipts: List<Receipt>): Map<String, WorkDayStats> {
         val paired = pairPunches(receipts)
         return receipts.groupBy { it.workDate.ifBlank { REVIEW_DATE_KEY } }.mapValues { (date, dayReceipts) ->
             var minutes = paired.minutesByDate[date] ?: 0
-            var pending = date in paired.pendingDates || dayReceipts.any { it.needsReview }
+            val issues = paired.issuesByDate[date].orEmpty().toMutableSet()
             dayReceipts.forEach { receipt ->
+                if (parseWorkDate(receipt.workDate) == null) issues += DayIssue.UNKNOWN_DATE
                 if (parseClockTime(receipt.entryTime) != null && parseClockTime(receipt.exitTime) != null) {
                     val worked = durationMinutes(receipt.entryTime, receipt.exitTime)
-                    if (worked != null) minutes += worked else pending = true
+                    if (worked != null) minutes += worked else issues += DayIssue.IMPLAUSIBLE_SHIFT
                 }
+            }
+            // "Marcado para revisão" é o motivo genérico: só aparece quando não há um mais específico,
+            // para o cabeçalho não repetir a mesma dúvida em duas linhas.
+            if (issues.isEmpty() && dayReceipts.any { it.needsReview }) {
+                issues += DayIssue.MARKED_FOR_REVIEW
             }
             WorkDayStats(
                 date = date,
                 minutes = minutes,
                 receiptCount = dayReceipts.size,
-                pending = pending
+                issues = issues.sorted()
             )
         }
     }
@@ -225,7 +261,11 @@ object WorkStatsCalculator {
      */
     private fun pairPunches(receipts: List<Receipt>): PairResult {
         val minutesByDate = mutableMapOf<String, Int>()
-        val pendingDates = mutableSetOf<String>()
+        val issuesByDate = mutableMapOf<String, MutableSet<DayIssue>>()
+        fun report(key: String, issue: DayIssue) {
+            val issues = issuesByDate.getOrPut(key) { mutableSetOf() }
+            issues += issue
+        }
         val dated = mutableListOf<Punch>()
 
         receipts.forEach { receipt ->
@@ -241,10 +281,11 @@ object WorkStatsCalculator {
                 else -> listOfNotNull(parseClockTime(receipt.workTime)?.let { it to PunchKind.UNKNOWN })
             }
             kinds.forEach { (time, kind) ->
-                if (date == null || kind == PunchKind.UNKNOWN) {
-                    pendingDates += key
-                } else {
-                    dated += Punch(key, date.atTime(time), kind)
+                when {
+                    // Data não reconhecida: o motivo (UNKNOWN_DATE) é do dia, marcado em dayStats.
+                    date == null -> Unit
+                    kind == PunchKind.UNKNOWN -> report(key, DayIssue.UNTYPED_PUNCH)
+                    else -> dated += Punch(key, date.atTime(time), kind)
                 }
             }
         }
@@ -260,23 +301,28 @@ object WorkStatsCalculator {
                         while (open.isNotEmpty() &&
                             Duration.between(open.first().at, punch.at).toMinutes() > MAX_SHIFT_MINUTES
                         ) {
-                            pendingDates += open.removeFirst().key
+                            report(open.removeFirst().key, DayIssue.MISSING_EXIT)
                         }
                         val entry = open.removeFirstOrNull()
-                        val worked = entry?.let { Duration.between(it.at, punch.at).toMinutes().toInt() } ?: 0
-                        if (entry != null && worked > 0) {
-                            minutesByDate[entry.key] = (minutesByDate[entry.key] ?: 0) + worked
+                        if (entry == null) {
+                            report(punch.key, DayIssue.MISSING_ENTRY)
                         } else {
-                            entry?.let { pendingDates += it.key }
-                            pendingDates += punch.key
+                            val worked = Duration.between(entry.at, punch.at).toMinutes().toInt()
+                            if (worked > 0) {
+                                minutesByDate[entry.key] = (minutesByDate[entry.key] ?: 0) + worked
+                            } else {
+                                // Entrada e saída no mesmo minuto: não é jornada, é erro de digitação/OCR.
+                                report(entry.key, DayIssue.IMPLAUSIBLE_SHIFT)
+                                report(punch.key, DayIssue.IMPLAUSIBLE_SHIFT)
+                            }
                         }
                     }
-                    PunchKind.UNKNOWN -> pendingDates += punch.key
+                    PunchKind.UNKNOWN -> report(punch.key, DayIssue.UNTYPED_PUNCH)
                 }
             }
-        open.forEach { pendingDates += it.key }
+        open.forEach { report(it.key, DayIssue.MISSING_EXIT) }
 
-        return PairResult(minutesByDate, pendingDates)
+        return PairResult(minutesByDate, issuesByDate)
     }
 
     private fun countWorkdays(start: LocalDate, end: LocalDate, daysOff: Set<LocalDate>): Int {
@@ -312,7 +358,10 @@ object WorkStatsCalculator {
 
     private data class Punch(val key: String, val at: LocalDateTime, val kind: PunchKind)
 
-    private data class PairResult(val minutesByDate: Map<String, Int>, val pendingDates: Set<String>)
+    private data class PairResult(
+        val minutesByDate: Map<String, Int>,
+        val issuesByDate: Map<String, Set<DayIssue>>
+    )
 
     private enum class PunchKind { ENTRY, EXIT, UNKNOWN }
 

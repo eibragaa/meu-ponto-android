@@ -278,4 +278,117 @@ class WorkStatsCalculatorTest {
         assertEquals("8h", formatMinutes(480))
         assertEquals("8h05", formatMinutes(485))
     }
+
+    @Test
+    fun `dia consistente nao tem motivo de revisao`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00", exit = "17:00"))
+        )
+
+        assertEquals(emptyList<DayIssue>(), days.getValue("22/10/2026").issues)
+    }
+
+    @Test
+    fun `saida sem entrada informa o motivo`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(date = "22/10/2026", exit = "06:57"))
+        )
+
+        assertEquals(listOf(DayIssue.MISSING_ENTRY), days.getValue("22/10/2026").issues)
+    }
+
+    @Test
+    fun `entrada sem saida informa o motivo`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(date = "22/10/2026", entry = "22:43"))
+        )
+
+        assertEquals(listOf(DayIssue.MISSING_EXIT), days.getValue("22/10/2026").issues)
+    }
+
+    @Test
+    fun `jornada acima de 16 horas informa o motivo`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00", exit = "01:00"))
+        )
+
+        assertEquals(listOf(DayIssue.IMPLAUSIBLE_SHIFT), days.getValue("22/10/2026").issues)
+    }
+
+    @Test
+    fun `horario sem tipo informa o motivo`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(workTime = "22:43"))
+        )
+
+        assertEquals(listOf(DayIssue.UNTYPED_PUNCH), days.getValue("22/10/2026").issues)
+    }
+
+    @Test
+    fun `data desconhecida informa o motivo`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(date = "", entry = "08:00"))
+        )
+
+        assertEquals(listOf(DayIssue.UNKNOWN_DATE), days.getValue("revisar").issues)
+    }
+
+    @Test
+    fun `comprovante marcado para revisao sem outro motivo`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00", exit = "17:00", needsReview = true))
+        )
+
+        assertEquals(listOf(DayIssue.MARKED_FOR_REVIEW), days.getValue("22/10/2026").issues)
+    }
+
+    @Test
+    fun `motivo especifico substitui a marcacao generica`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00", needsReview = true))
+        )
+
+        assertEquals(listOf(DayIssue.MISSING_EXIT), days.getValue("22/10/2026").issues)
+    }
+
+    @Test
+    fun `motivos ficam em ordem de prioridade`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "22/10/2026", entry = "08:00", needsReview = true),
+                receipt(date = "22/10/2026", workTime = "22:43")
+            )
+        )
+
+        assertEquals(
+            listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MISSING_EXIT),
+            days.getValue("22/10/2026").issues
+        )
+    }
+
+    @Test
+    fun `entrada e saida no mesmo minuto nao viram jornada`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "22/10/2026", entry = "08:00"),
+                receipt(date = "22/10/2026", exit = "08:00")
+            )
+        )
+
+        assertEquals(0, days.getValue("22/10/2026").minutes)
+        assertEquals(listOf(DayIssue.IMPLAUSIBLE_SHIFT), days.getValue("22/10/2026").issues)
+    }
+
+    @Test
+    fun `turno acima de 16 horas pendente nos dois dias com motivos distintos`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "21/10/2026", entry = "08:00"),
+                receipt(date = "22/10/2026", exit = "09:00")
+            )
+        )
+
+        assertEquals(listOf(DayIssue.MISSING_EXIT), days.getValue("21/10/2026").issues)
+        assertEquals(listOf(DayIssue.MISSING_ENTRY), days.getValue("22/10/2026").issues)
+    }
 }
