@@ -1,6 +1,6 @@
 # Feature — aviso de atualização ao abrir o app
 
-_Status: planejamento. Nada implementado ainda._
+_Status: fases 1–5 implementadas na branch `feat-update-ao-abrir` em 23/10/2026. Fase 6 (QA no aparelho e release) pendente. CI da branch: run `39918294742` (testes, lint, APK e AAB)._
 
 Objetivo: ao abrir o Meu Ponto (flavor `github`), verificar se existe uma versão nova no GitHub e
 avisar o usuário de forma clara, mostrando as correções e novidades daquela versão.
@@ -41,11 +41,11 @@ Ou seja: a base está pronta. A feature é evoluir isso para um fluxo confiável
 1. A tela inicial aparece normalmente; a verificação roda em background.
 2. Se houver versão nova:
    - mostrar um **banner compacto** no topo da lista;
-   - na primeira vez que aquela versão for vista, abrir também o diálogo de novidades.
+   - abrir também o diálogo de novidades a cada abertura/verificação que encontrar a versão nova.
 3. Se o usuário tocar em “Depois”:
    - fecha o diálogo;
    - o banner continua visível;
-   - o modal não volta para a mesma versão.
+   - a próxima abertura/verificação pode mostrar o modal de novo.
 4. Se o usuário tocar em “Dispensar” no banner:
    - o banner some para aquela versão;
    - a verificação manual na tela Sobre continua disponível.
@@ -90,7 +90,7 @@ Na primeira abertura da versão nova:
 
 - mostrar uma folha “O que há de novo na vX.Y.Z” com as notas que já foram baixadas;
 - botão “Começar a usar”;
-- mostrar **uma vez por versão** e limpar o estado depois.
+- mostrar **uma vez após a instalação** e limpar o estado depois.
 
 Se o usuário instalou o APK por fora do app, não há notas pendentes: nesse caso, não mostrar nada
 (ou buscar `/releases/tags/vX` em uma fase futura).
@@ -161,7 +161,6 @@ Assim o parser vira testável sem `HttpURLConnection` e sem Android.
 | Chave | Uso |
 |---|---|
 | `last_check_at` | throttle entre verificações |
-| `last_prompted_version` | evita reabrir o modal para a mesma versão |
 | `dismissed_version` | esconde o banner daquela versão |
 | `pending_notes_version` | versão cujas notas serão mostradas após instalar |
 | `pending_notes` | notas salvas antes de abrir o instalador |
@@ -176,10 +175,6 @@ object UpdatePolicy {
         lastCheckAt: Long
     ): Boolean
 
-    fun shouldShowPrompt(
-        version: String,
-        lastPromptedVersion: String?
-    ): Boolean
 }
 ```
 
@@ -187,7 +182,7 @@ object UpdatePolicy {
 
 ### 5.5 Coordenador
 
-Criar `updater/UpdateCoordinator.kt` (ou `UpdateManager`) com:
+Implementado em `updater/UpdateCoordinator.kt` com `UpdateRuntime` (instância de processo):
 
 - `StateFlow<UpdateUiState>` para a tela observar;
 - `onColdStart()`, `onForeground()`, `checkNow()`;
@@ -221,8 +216,8 @@ checkForUpdates() ──► UpToDate ──► nada
         ▼
     Available
         │
-        ├─ banner sempre
-        └─ modal só se versão ainda não foi mostrada
+        ├─ banner sempre (se não dispensado)
+        └─ modal a cada verificação com atualização
                 │
                 ▼
         “Atualizar agora” ──► download ──► salva notas pendentes ──► instalador
@@ -233,12 +228,13 @@ checkForUpdates() ──► UpToDate ──► nada
 
 ## 6. Release notes
 
-As notas exibidas vêm do corpo do release no GitHub. Para o texto não ficar técnico:
+As notas exibidas vêm do corpo do release no GitHub. O modelo está em
+[`release-notes-template.md`](release-notes-template.md). Para o texto não ficar técnico:
 
 - escrever o corpo do release em português, com seções curtas:
-  - “Correções”;
-  - “Novidades”;
-  - “Interno” (opcional; pode ser omitido do app).
+  - “Novidades” (o banner destaca até dois itens);
+  - “Correções e melhorias” (o banner mostra o rótulo genérico);
+  - “Interno” (opcional; não aparece no banner).
 - evitar listar commits individuais;
 - manter um tamanho máximo confortável (ex.: 4.000 caracteres);
 - o workflow atual usa `generate_release_notes: true`; para notas curadas, definir `body`/`body_path`
@@ -284,7 +280,7 @@ dá histórico versionado e evita texto automático.
   - foreground dentro do intervalo não verifica;
   - foreground depois do intervalo verifica;
   - manual ignora intervalo;
-  - modal não repete para a mesma versão;
+  - modal reabre em uma nova verificação/abertura;
   - banner dispensado não volta para a mesma versão.
 - `UpdateParserTest`
   - release com APK `Meu-Ponto-*.apk`;
@@ -293,15 +289,18 @@ dá histórico versionado e evita texto automático.
   - versão igual, menor e maior;
   - tag com `v`;
   - corpo vazio;
-  - JSON inválido.
-- `UpdatePreferencesTest` com armazenamento fake (sem Android).
+  - digest publicado/ausente;
+  - resumo do banner com novidades e correções genéricas.
+- `UpdatePreferencesTest` e `UpdatePolicyTest` com armazenamento fake (sem Android).
+- `UpdateCoordinatorTest`: abertura fria, modal, banner, falha manual/automática, notas pendentes e requisição única.
+- `ApkIntegrityTest`: SHA-256, normalização de digest e comparação de assinaturas.
 - Manter `AppUpdaterTest` de comparação de versão.
 
 ### 9.2 Manual no aparelho
 
 - [ ] Abrir o app sem rede: não travar, não mostrar erro automático.
-- [ ] Abrir com rede e versão nova: banner + modal uma vez.
-- [ ] Tocar “Depois”: banner permanece, modal não reabre.
+- [ ] Abrir com rede e versão nova: banner + modal.
+- [ ] Tocar “Depois”: banner permanece; a próxima abertura/verificação pode reabrir o modal.
 - [ ] Dispensar banner: some para aquela versão.
 - [ ] Verificação manual com erro: mensagem específica.
 - [ ] Baixar, instalar e reabrir: “O que há de novo” uma vez.
@@ -311,15 +310,15 @@ dá histórico versionado e evita texto automático.
 
 ## 10. Entregas sugeridas
 
-| Fase | Entrega | Tamanho |
+| Fase | Entrega | Status |
 |---|---|---|
-| 0 | Confirmar UX e política de release notes | P |
-| 1 | Separar parser, `UpdateCheckResult` e erros tipados + testes | M |
-| 2 | `UpdatePreferences` + `UpdatePolicy` + testes | P |
-| 3 | `UpdateCoordinator`, lifecycle, banner e modal uma vez por versão | M |
-| 4 | “O que há de novo” após atualizar | P |
-| 5 | Hardening: rate limit/ETag, assinatura/checksum, mensagens de erro | M |
-| 6 | QA no aparelho, docs e release | P |
+| 0 | Confirmar UX e política de release notes | Confirmada |
+| 1 | Separar parser, `UpdateCheckResult` e erros tipados + testes | Implementada |
+| 2 | `UpdatePreferences` + `UpdatePolicy` + testes | Implementada |
+| 3 | `UpdateCoordinator`, lifecycle, banner e modal por abertura | Implementada |
+| 4 | “O que há de novo” após atualizar | Implementada |
+| 5 | Hardening: checksum, assinatura e resumo do banner (ETag adiado) | Implementada |
+| 6 | QA no aparelho, docs e release | Pendente |
 
 Sugestão de versão: **0.6.0** (feature de UX), depois da `0.5.1` de correções. Se a prioridade for
 só o aviso mínimo, dá para fazer as fases 1–3 e lançar como `0.5.2`, deixando o “O que há de novo”
@@ -329,26 +328,24 @@ para depois.
 
 - [ ] Abrir o flavor `github` com versão nova disponível mostra o aviso sem bloquear a tela.
 - [ ] O aviso mostra versão atual, versão nova e notas legíveis.
-- [ ] O modal aparece no máximo uma vez por versão; o banner continua acessível.
+- [ ] O modal aparece em cada abertura/verificação com atualização; o banner continua acessível.
 - [ ] Sem atualização, o fluxo automático não incomoda.
 - [ ] Erro de rede não é confundido com “versão mais recente”.
 - [ ] A verificação manual sempre mostra o resultado real.
 - [ ] Após instalar, “O que há de novo” aparece uma vez.
 - [ ] `play` não faz consulta ao GitHub.
-- [ ] Testes de política, parser e preferências passam.
-- [ ] Lint e build das duas flavors passam no CI.
+- [x] Testes de política, parser e preferências passam no CI.
+- [x] Lint e build das duas flavors passam no CI.
 
 ## 12. Decisões para confirmar
 
-1. **Aviso:** banner + modal uma vez por versão (recomendado) ou modal em toda abertura?
-2. **Frequência:** abertura fria sempre + volta do background após 30 min (recomendado), ou toda
-   volta ao foreground?
-3. **Pós-atualização:** mostrar “O que há de novo” uma vez (recomendado) ou não?
-4. **Dispensar:** “Depois” mantém o banner e “Dispensar” esconde só aquela versão (recomendado)?
-5. **Notas:** corpo do release curado manualmente (recomendado) ou notas automáticas do GitHub?
-6. **Play:** manter o flavor `play` sem updater por enquanto (recomendado) ou implementar a
-   In-App Updates API junto?
-7. **Versão alvo:** `0.6.0` para a feature completa ou `0.5.2` para o aviso mínimo?
+1. **Aviso:** confirmado — modal em toda abertura/verificação com atualização; banner só quando há atualização disponível.
+2. **Frequência:** implementado — abertura fria sempre + volta do background após 30 min.
+3. **Pós-atualização:** confirmado — mostrar “O que há de novo” uma vez após instalar.
+4. **Dispensar:** implementado — “Depois” mantém o banner e “Dispensar” esconde só aquela versão.
+5. **Notas:** confirmado — corpo do release curado; ver `release-notes-template.md`.
+6. **Play:** implementado — flavor `play` sem updater; In-App Updates API fica para depois.
+7. **Versão alvo:** pendente — `0.6.0` para a feature completa ou `0.5.2` para o aviso mínimo.
 
 ## 13. Fora de escopo por enquanto
 
@@ -359,6 +356,7 @@ para depois.
 - In-App Updates da Play Store.
 - Renderização completa de Markdown nas notas.
 - Verificação de atualização com o app totalmente fechado (work manager), sem abrir o app.
+- ETag/cache condicional: o throttle de 30 min cobre o uso normal; ETag pode entrar depois.
 
 ## 14. Referências de código
 

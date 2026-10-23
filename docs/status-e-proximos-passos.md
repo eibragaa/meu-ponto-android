@@ -1,6 +1,6 @@
 # Meu Ponto — status atual e próximos passos
 
-_Atualizado em 22/10/2026 (fim do dia). Versão publicada: `v0.5.0` (`versionCode 8`)._
+_Atualizado em 23/10/2026. Versão publicada: `v0.5.1` (`versionCode 9`)._
 
 Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
 
@@ -80,7 +80,7 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - Testes novos (5): turno que cruza a meia-noite, sequência de turnos noturnos, saída sem entrada, entrada sem saída, horário sem tipo. Todos os 16 testes da suíte passam (rodados com JUnit direto, ver P1).
 - APK `github` com a correção instalado no celular por cima da 0.5.0 (mesma assinatura; dados preservados: 12 comprovantes).
 - **Pendente:** classificar os comprovantes no celular (Editar → "Só entrada" ou "Só saída"). Sem isso, o app continua pendente, mesmo com a lógica corrigida.
-- **Pendente:** publicar a correção como release (`v0.5.1`), depois da validação no celular.
+- **Publicado:** correção incluída na release `v0.5.1` (ver 1.11).
 
 ---
 
@@ -89,7 +89,21 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - Regra de duração unificada: `durationMinutes` passou a aplicar o mesmo teto de 16h do pareamento (antes, entrada+saída no mesmo comprovante aceitava jornada irreal).
 - Testes: 16 → **35** (novos: máscaras/P18, formatação de minutos, bordas de comparação de versão, consistência de jornada).
 - Padrão de engenharia do repositório criado em [`engineering-standards.md`](engineering-standards.md) (+ `AGENTS.md` e PR template) — vale para pessoa e para qualquer agente de IA.
-- **Pendente:** compilar/testar no PC (`:app:testPlayDebugUnitTest`, `lintPlayDebug`) antes do merge; extração do `MeuPontoApp` (504 linhas) segue no roadmap do padrão.
+- **Validado no CI:** testes, lint e builds das duas flavors passaram no run `39891919429`; extração do `MeuPontoApp` (504 linhas) segue no roadmap do padrão.
+
+### 1.11 Release v0.5.1 (23/10/2026)
+- `versionName` `0.5.1` / `versionCode` 9 no commit `215c8b3`.
+- Tag `v0.5.1` criada e enviada; run `39910556532` concluído com sucesso.
+- Release publicada como **Latest**, com `Meu-Ponto-v0.5.1.apk` e `app-play-release.aab`.
+- Release notes curadas aplicadas no GitHub com as correções de turno noturno e editor.
+- **Validado no aparelho:** o app instalado detectou a atualização e instalou a `0.5.1` pelo próprio updater.
+
+### 1.12 Feature de atualização ao abrir (23/10/2026, branch)
+- Branch `feat-update-ao-abrir` com fases 1–5 implementadas.
+- Verificação na abertura e ao voltar ao foreground (throttle de 30 min), banner, modal por abertura,
+  “O que há de novo”, parser/erros tipados, preferências, checksum SHA-256 e aviso de assinatura.
+- 93 testes e CI verde no run `39918294742` da branch.
+- **Pendente:** QA no aparelho, PR e decisão de release (`0.6.0`).
 
 ---
 
@@ -98,16 +112,16 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 | Área | Estado |
 |---|---|
 | Flavors `play` / `github` | Implementado |
-| Auto-update | Só na `github`. Na `play` não existe (In-App Updates API da Play ainda não implementada) |
+| Auto-update | Só na `github`: verifica ao abrir/voltar, mostra banner e novidades. Na `play` não existe (In-App Updates API da Play ainda não implementada) |
 | Permissões | `INTERNET` em ambas. `REQUEST_INSTALL_PACKAGES` só na `github` |
 | Backup automático do Android | Desativado (`allowBackup=false` + regras) |
 | Backup do app (ZIP, AES-GCM com senha) | Implementado (PBKDF2 com 120k iterações) |
 | Restore | Implementado, com checagem de duplicata por `capturedAt` |
 | Room | v2, schema exportado. Migração 1→2 sem teste automatizado |
 | R8 em release | Ativado, sem regras extras. Testado só no WSA (fluxo completo não rodado) |
-| Testes unitários | 35 testes em 4 arquivos: `WorkStatsCalculatorTest`, `FormattingTest`, `MaskedInputTest`, `AppUpdaterTest`. Backup/PDF/DAO ainda sem teste |
+| Testes unitários | 93 testes em 9 arquivos, incluindo updater/parser/coordinator/checksum. Backup/PDF/DAO ainda sem teste |
 | Strings | Hardcoded em pt-BR. Sem `strings.xml` |
-| Arquitetura | `MainActivity.kt` com 1.567 linhas + camadas `domain/`, `data/`, `ui/`, `updater/`. Sem ViewModel nem Repository |
+| Arquitetura | `MainActivity.kt` + camadas `domain/`, `data/`, `ui/`, `updater/` com `UpdateCoordinator`. Sem ViewModel nem Repository |
 | Padrão de engenharia | [`engineering-standards.md`](engineering-standards.md) + [`AGENTS.md`](../AGENTS.md). Pendências `ENG-1` a `ENG-6` |
 | Acessibilidade | Não auditada. Seleção de comprovantes só por long-press |
 
@@ -118,12 +132,13 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 ### 3.0 Releases publicadas
 | Versão | Data | Estado | Assets | Assinatura |
 |---|---|---|---|---|
-| **`v0.5.0`** | 22/10/2026 16:19 UTC | **Latest** | `Meu-Ponto-v0.5.0.apk` (44,5 MB), `app-play-release.aab` (22,8 MB) | Keystore novo (`4ef464d5…`) |
+| **`v0.5.1`** | 23/10/2026 06:17 UTC | **Latest** | `Meu-Ponto-v0.5.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| `v0.5.0` | 22/10/2026 16:19 UTC | Anterior | `Meu-Ponto-v0.5.0.apk` (44,5 MB), `app-play-release.aab` (22,8 MB) | Keystore novo (`4ef464d5…`) |
 | `v0.4.0` | 20/10/2026 | Anterior | `Meu-Ponto-v0.4.0.apk` (61 MB), **build debug** (debuggable) | Chave do runner (`2aa251…`) |
 | `v0.3.3` | 16/10/2026 | Anterior | `Meu-Ponto-v0.3.3.apk` | Chave do runner (`8f347d…`) |
 
-- Sem sinal de problema no run da tag `v0.5.0`.
-- Efeito no updater: quem está na `0.5.0` **não recebe update** enquanto não existir release com versão maior. Para testar o fluxo de atualização de ponta a ponta, é preciso publicar `v0.5.1` depois de migrar o celular.
+- Run da tag `v0.5.1` concluído com sucesso; release marcado como **Latest**.
+- Efeito no updater: quem está na `0.5.0` passa a receber a `0.5.1`. Falta validar a instalação no aparelho.
 
 ### 3.1 Keystore de distribuição (criado em 22/10/2026)
 - Arquivo: `C:\Users\jeanb\.meuponto\meu-ponto-release.jks` (fora do repo; `.gitignore` bloqueia `*.jks`).
@@ -188,14 +203,14 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 | P9 | Período de folha alterado no WSA sem ação registrada | Dúvida sobre dados de teste | Confirmar com o usuário |
 | P10 | Versão instalada no celular é desconhecida | Não sabemos o estado de partida da migração | Informar a versão do app no celular |
 | P11 | ~~Workflow de release quebrado~~ | — | **Resolvido** (seção 3.2). Rodou com sucesso na tag `v0.5.0` |
-| P12 | Releases anteriores assinadas com certificados diferentes (`v0.3.3`, `v0.4.0`) | Update por cima entre releases antigas e a nova falha | **Mitigado**: keystore fixo. Falta migrar o celular (seção 7) |
-| P13 | Teste de rede do updater no WSA inconclusivo (`wget` sem resposta; mensagem não capturada) | Não confirmado que o updater alcança o GitHub a partir do dispositivo de teste | Testar no celular |
-| P14 | Updater não pode ser testado de ponta a ponta com `v0.5.0` (é a versão mais recente) | Fluxo "baixar e instalar" só se prova com versão maior | Publicar `v0.5.1` de teste depois da migração |
+| P12 | Releases anteriores assinadas com certificados diferentes (`v0.3.3`, `v0.4.0`) | Update por cima entre releases antigas e a nova falha | **Resolvido na prática**: updater instalou a `v0.5.1` sobre a `0.5.0` no aparelho |
+| P13 | Teste de rede do updater no WSA inconclusivo (`wget` sem resposta; mensagem não capturada) | Não confirmado que o updater alcança o GitHub a partir do dispositivo de teste | **Resolvido**: updater acessou o GitHub e atualizou no aparelho |
+| P14 | Updater precisa ser testado de ponta a ponta no aparelho | — | **Resolvido**: `0.5.0` → `0.5.1` baixou e instalou pelo próprio app |
 | P15 | Setup Java v4 e `ubuntu-latest` com avisos de depreciação | Pode quebrar em breve | Atualizar `setup-java` para v5 e fixar `ubuntu-24.04` |
-| P16 | Turno noturno sem pareamento entre dias e comprovantes restaurados sem tipo (entrada/saída) | Horas zeradas para quem trabalha à noite (ver 1.9) | **Lógica corrigida** (local). Classificar comprovantes no celular e publicar `v0.5.1` |
+| P16 | Turno noturno sem pareamento entre dias e comprovantes restaurados sem tipo (entrada/saída) | Horas zeradas para quem trabalha à noite (ver 1.9) | **Corrigido e publicado na `v0.5.1`**. Classificar comprovantes no celular |
 | P17 | Updater: instalação falha com assinatura diferente, e o erro aparece só depois do Play Protect | Usuário sem clareza sobre a migração | Mostrar mensagem de assinatura diferente antes de abrir o instalador (melhoria no updater) |
-| P18 | Editor de horário: ao digitar, o cursor voltava e os dígitos entravam fora de ordem (ex.: "22:34" em vez de "22:43") | Dados errados ao editar | **Corrigido** (local): campo guarda o cursor e vai para o fim após a máscara. Testado no celular |
-| P19 | Editor: "Só entrada" ou "Só saída" salvava também o outro horário (ex.: entrada e saída iguais para um comprovante só com horário) | Horas e pendências erradas | **Corrigido** (local): só salva o tipo escolhido. Testado no 07:00 do 20/10 |
+| P18 | Editor de horário: ao digitar, o cursor voltava e os dígitos entravam fora de ordem (ex.: "22:34" em vez de "22:43") | Dados errados ao editar | **Corrigido e publicado na `v0.5.1`**: campo guarda o cursor e vai para o fim após a máscara |
+| P19 | Editor: "Só entrada" ou "Só saída" salvava também o outro horário (ex.: entrada e saída iguais para um comprovante só com horário) | Horas e pendências erradas | **Corrigido e publicado na `v0.5.1`**: só salva o tipo escolhido |
 | P20 | "Revisar" no cabeçalho do dia não explica o motivo (ex.: saída sem entrada no dia anterior). O aviso no card some ao salvar, mas o dia continua pendente | Usuário acha que não salvou | Mostrar o motivo no cabeçalho (ex.: "saída sem entrada") ou por comprovante |
 
 ---
@@ -220,11 +235,11 @@ Motivo: o celular tem APK com assinatura antiga. Sem a migração, nenhuma atual
 4. Conferir se o dia da entrada mostra as horas (ex.: 22/10 → 8h17).
 
 ### 7.2 Depois da migração
-Checklist detalhado do próximo release: [`plano-release-v0.5.1.md`](plano-release-v0.5.1.md).
+Checklist do release publicado: [`plano-release-v0.5.1.md`](plano-release-v0.5.1.md).
 
 1. Testar no celular: scanner, galeria com OCR, edição, PDF individual e em lote, backup com e sem senha, restore, tema claro e escuro.
 2. Diagnosticar o updater no celular: informar a versão instalada antes da migração (P10).
-3. Para testar o fluxo de atualização real (P14): publicar `v0.5.1` (ex.: `versionName` `0.5.1` e `versionCode` 9), criar a tag e conferir se o celular oferece a atualização e instala.
+3. Fluxo de atualização real (P14): **confirmado no aparelho** com a `v0.5.1`.
 4. Revisar a política de privacidade (seção 4): preencher placeholders e definir o encarregado.
 5. Decidir sobre o `v0.4.0` (P3).
 6. Resolver P1 e P2 (testes e lint locais).
@@ -251,4 +266,4 @@ Checklist detalhado do próximo release: [`plano-release-v0.5.1.md`](plano-relea
 - Aceitar `allowBackup=false` (P6)?
 - Qual pessoa ou canal será o encarregado (LGPD)?
 - Manter o `v0.4.0` público, marcar como pré-release ou remover (P3)?
-- Próxima versão de teste (`v0.5.1`) quando a migração do celular estiver feita?
+- Quando liberar a `v0.6.0` com o novo fluxo de atualização ao abrir (branch `feat-update-ao-abrir`)?

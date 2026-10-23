@@ -62,18 +62,22 @@ private fun formatFileSize(bytes: Long): String {
 /**
  * Diálogo do atualizador in-app, do "tem versão nova" ao "instalar".
  *
- * O fluxo reflete [UpdateDownloadState]: baixar mostra progresso, concluir pede permissão de
- * instalação (`REQUEST_INSTALL_PACKAGES`) e só então abre o instalador do sistema. Falha de
- * assinatura aparece aqui como erro porque o Android só a detecta no momento da instalação.
+ * O fluxo reflete [UpdateDownloadState]: baixar mostra progresso, confere o checksum publicado e o
+ * certificado do APK, pede permissão de instalação (`REQUEST_INSTALL_PACKAGES`) e só então abre o
+ * instalador do sistema. Assinatura diferente é bloqueada aqui (P17), antes do instalador.
  */
 @Composable
 fun UpdateDialog(
     updateInfo: AppUpdateInfo,
     currentVersion: String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onInstallerReady: (AppUpdateInfo) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val releaseUrl = updateInfo.releaseUrl.ifBlank {
+        "https://github.com/${AppUpdater.GITHUB_OWNER}/${AppUpdater.GITHUB_REPO}"
+    }
     var downloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
 
@@ -164,6 +168,20 @@ fun UpdateDialog(
                     }
                 }
 
+                TextButton(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(releaseUrl)))
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.OpenInBrowser,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Ver no GitHub")
+                }
+
                 when (val state = downloadState) {
                     is UpdateDownloadState.Idle -> {
                         if (updateInfo.apkSize > 0) {
@@ -241,6 +259,13 @@ fun UpdateDialog(
                             }
                         }
                     }
+                    is UpdateDownloadState.SignatureMismatch -> {
+                        Text(
+                            text = "Esta atualização foi assinada com uma chave diferente da versão instalada. Faça um backup, desinstale esta versão e instale o APK manualmente.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     is UpdateDownloadState.Error -> {
                         Text(
                             text = state.message,
@@ -265,11 +290,21 @@ fun UpdateDialog(
                                         fileName = updateInfo.apkFileName,
                                         onProgress = { progress, downloaded, total ->
                                             downloadState = UpdateDownloadState.Downloading(progress, downloaded, total)
-                                        }
+                                        },
+                                        expectedSha256 = updateInfo.apkDigest
                                     )
-                                    downloadState = UpdateDownloadState.ReadyToInstall(file)
-                                    if (AppUpdater.canInstallUnknownApps(context)) {
-                                        AppUpdater.launchInstaller(context, file)
+                                    if (AppUpdater.checkApkSignature(context, file) ==
+                                        ApkSignatureStatus.DIFFERENT
+                                    ) {
+                                        // Não deixa o APK de outra chave no cache nem abre o instalador.
+                                        file.delete()
+                                        downloadState = UpdateDownloadState.SignatureMismatch
+                                    } else {
+                                        downloadState = UpdateDownloadState.ReadyToInstall(file)
+                                        onInstallerReady(updateInfo)
+                                        if (AppUpdater.canInstallUnknownApps(context)) {
+                                            AppUpdater.launchInstaller(context, file)
+                                        }
                                     }
                                 } catch (e: Exception) {
                                     downloadState = UpdateDownloadState.Error(
@@ -313,6 +348,11 @@ fun UpdateDialog(
                         )
                     }
                 }
+                is UpdateDownloadState.SignatureMismatch -> {
+                    Button(onClick = onDismiss) {
+                        Text("Fechar")
+                    }
+                }
                 is UpdateDownloadState.Error -> {
                     Button(
                         onClick = {
@@ -325,7 +365,9 @@ fun UpdateDialog(
             }
         },
         dismissButton = {
-            if (downloadState !is UpdateDownloadState.Downloading) {
+            if (downloadState !is UpdateDownloadState.Downloading &&
+                downloadState !is UpdateDownloadState.SignatureMismatch
+            ) {
                 TextButton(onClick = onDismiss) {
                     Text(if (downloadState is UpdateDownloadState.ReadyToInstall) "Fechar" else "Mais tarde")
                 }

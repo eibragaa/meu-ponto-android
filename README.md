@@ -58,7 +58,7 @@ atualizador via GitHub Releases). Para instalar em paralelo com a versão oficia
 Empurre uma tag `vX.Y.Z` **igual** ao `versionName` do `app/build.gradle.kts`:
 
 ```bash
-git tag v0.5.1 && git push origin v0.5.1
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 O workflow `.github/workflows/android-release.yml` (tag `v*` ou execução manual) roda testes e lint,
@@ -79,7 +79,8 @@ e credenciais fora do repositório.
 
 - [Padrão de engenharia](docs/engineering-standards.md) — camadas, nomenclatura, testes, git e release
 - [Status e próximos passos](docs/status-e-proximos-passos.md)
-- [Plano do próximo release (v0.5.1)](docs/plano-release-v0.5.1.md)
+- [Plano do release v0.5.1 (publicado)](docs/plano-release-v0.5.1.md)
+- [Modelo de release notes](docs/release-notes-template.md)
 - [Plano da feature de atualização ao abrir](docs/plano-feature-atualizacao-ao-abrir.md)
 - [Roadmap para a Play Store](docs/roadmap-aaa.md)
 - [Brand book](docs/brand-book.md)

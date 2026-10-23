@@ -7,26 +7,23 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import org.json.JSONException
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-
-data class AppUpdateInfo(
-    val versionName: String,
-    val releaseName: String,
-    val releaseNotes: String,
-    val apkUrl: String,
-    val apkFileName: String,
-    val apkSize: Long
-)
+import java.net.UnknownHostException
 
 sealed interface UpdateDownloadState {
     data object Idle : UpdateDownloadState
     data class Downloading(val progress: Float, val downloadedBytes: Long, val totalBytes: Long) : UpdateDownloadState
     data class ReadyToInstall(val apkFile: File) : UpdateDownloadState
+
+    /** APK baixado tem chave diferente da instalada; não deve ser aberto no instalador (P17). */
+    data object SignatureMismatch : UpdateDownloadState
     data class Error(val message: String) : UpdateDownloadState
 }
 
@@ -34,6 +31,12 @@ object AppUpdater {
     const val GITHUB_OWNER = "eibragaa"
     const val GITHUB_REPO = "meu-ponto-android"
     private const val GITHUB_API_LATEST = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
+
+    /** Tempo máximo para abrir a conexão com a API do GitHub. */
+    const val UPDATE_CONNECT_TIMEOUT_MS = 10_000
+
+    /** Tempo máximo para ler a resposta da API; o GitHub pode demorar em redes lentas. */
+    const val UPDATE_READ_TIMEOUT_MS = 15_000
 
     fun getInstalledVersionName(context: Context): String {
         return try {
@@ -75,68 +78,50 @@ object AppUpdater {
         return false
     }
 
-    suspend fun checkForUpdates(currentVersion: String): Result<AppUpdateInfo?> = withContext(Dispatchers.IO) {
-        runCatching {
-            val url = URL(GITHUB_API_LATEST)
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                setRequestProperty("User-Agent", "MeuPonto-App")
-                setRequestProperty("Accept", "application/vnd.github.v3+json")
-                connectTimeout = 10_000
-                readTimeout = 15_000
-            }
+    suspend fun checkForUpdates(currentVersion: String): UpdateCheckResult = withContext(Dispatchers.IO) {
+        try {
+            requestLatestRelease(currentVersion)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: UnknownHostException) {
+            UpdateCheckResult.Failed(UpdateFailure.OFFLINE)
+        } catch (_: IOException) {
+            UpdateCheckResult.Failed(UpdateFailure.OFFLINE)
+        } catch (_: JSONException) {
+            UpdateCheckResult.Failed(UpdateFailure.INVALID_RESPONSE)
+        }
+    }
 
-            val statusCode = connection.responseCode
-            if (statusCode != HttpURLConnection.HTTP_OK) {
-                return@runCatching null
-            }
+    private fun requestLatestRelease(currentVersion: String): UpdateCheckResult {
+        val connection = (URL(GITHUB_API_LATEST).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "MeuPonto-App")
+            setRequestProperty("Accept", "application/vnd.github.v3+json")
+            connectTimeout = UPDATE_CONNECT_TIMEOUT_MS
+            readTimeout = UPDATE_READ_TIMEOUT_MS
+        }
 
-            val jsonString = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            val json = JSONObject(jsonString)
-
-            val tagName = json.optString("tag_name", "").trim()
-            val releaseName = json.optString("name", tagName).trim()
-            val releaseNotes = json.optString("body", "").trim()
-            val assets = json.optJSONArray("assets") ?: return@runCatching null
-
-            var apkUrl: String? = null
-            var apkFileName: String? = null
-            var apkSize: Long = 0L
-
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                val name = asset.optString("name", "")
-                if (name.endsWith(".apk", ignoreCase = true)) {
-                    val downloadUrl = asset.optString("browser_download_url", "")
-                    if (downloadUrl.isNotBlank()) {
-                        apkUrl = downloadUrl
-                        apkFileName = name
-                        apkSize = asset.optLong("size", 0L)
-                        // If it matches Meu-Ponto-*.apk, favor it immediately
-                        if (name.contains("Meu-Ponto", ignoreCase = true)) {
-                            break
-                        }
+        return try {
+            when (val statusCode = connection.responseCode) {
+                HttpURLConnection.HTTP_OK -> {
+                    val jsonString = connection.inputStream
+                        .bufferedReader(Charsets.UTF_8)
+                        .use { it.readText() }
+                    val payload = parseLatestRelease(jsonString)
+                    if (payload == null) {
+                        UpdateCheckResult.Failed(UpdateFailure.INVALID_RESPONSE)
+                    } else {
+                        evaluateRelease(payload, currentVersion)
                     }
                 }
+                else -> if (isReleaseMissingStatus(statusCode)) {
+                    UpdateCheckResult.UpToDate
+                } else {
+                    UpdateCheckResult.Failed(failureForHttpStatus(statusCode))
+                }
             }
-
-            if (apkUrl.isNullOrBlank() || apkFileName.isNullOrBlank()) {
-                return@runCatching null
-            }
-
-            val remoteVersion = tagName.trimStart('v', 'V')
-            if (isNewerVersion(remoteVersion, currentVersion)) {
-                AppUpdateInfo(
-                    versionName = remoteVersion,
-                    releaseName = releaseName.ifBlank { "Versão $remoteVersion" },
-                    releaseNotes = releaseNotes,
-                    apkUrl = apkUrl,
-                    apkFileName = apkFileName,
-                    apkSize = apkSize
-                )
-            } else {
-                null
-            }
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -144,14 +129,17 @@ object AppUpdater {
      * Baixa o APK do release para `cacheDir/updates`.
      *
      * O GitHub responde com redirect para o CDN, por isso o laço de redirecionamento; o download vai
-     * para um `.tmp` e só vira o arquivo final ao terminar, evitando instalar APK truncado.
+     * para um `.tmp` e só vira o arquivo final ao terminar, evitando instalar APK truncado. Quando
+     * [expectedSha256] é informado, o `.tmp` só é promovido se o SHA-256 conferir; em divergência ele
+     * é apagado e o erro pede novo download.
      * O cache é limpo por [br.com.jean.meuponto.data.cleanupUpdateAndPdfCaches].
      */
     suspend fun downloadApk(
         context: Context,
         apkUrl: String,
         fileName: String,
-        onProgress: (progress: Float, downloaded: Long, total: Long) -> Unit
+        onProgress: (progress: Float, downloaded: Long, total: Long) -> Unit,
+        expectedSha256: String? = null
     ): File = withContext(Dispatchers.IO) {
         val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
         val targetFile = File(updatesDir, fileName)
@@ -209,6 +197,14 @@ object AppUpdater {
             }
         }
 
+        if (!expectedSha256.isNullOrBlank()) {
+            val actualSha256 = sha256OfFile(tempFile)
+            if (!sha256Matches(expectedSha256, actualSha256)) {
+                tempFile.delete()
+                throw IOException(CHECKSUM_MISMATCH_MESSAGE)
+            }
+        }
+
         if (targetFile.exists()) {
             targetFile.delete()
         }
@@ -218,6 +214,25 @@ object AppUpdater {
         }
 
         targetFile
+    }
+
+    /**
+     * Compara o certificado do APK baixado com o do app instalado antes de abrir o instalador (P17).
+     *
+     * [ApkSignatureStatus.UNKNOWN] cobre APK inválido, pacote instalado não encontrado e falha de
+     * leitura; nesse caso o fluxo segue, porque o Android ainda recusa a instalação se as chaves não
+     * forem compatíveis. [ApkSignatureStatus.DIFFERENT] é conclusivo e deve bloquear a instalação.
+     */
+    fun checkApkSignature(context: Context, apkFile: File): ApkSignatureStatus {
+        val installed = readInstalledCertificateHashes(context) ?: return ApkSignatureStatus.UNKNOWN
+        val downloaded = readApkCertificateHashes(context, apkFile) ?: return ApkSignatureStatus.UNKNOWN
+        if (installed.isEmpty() || downloaded.isEmpty()) return ApkSignatureStatus.UNKNOWN
+
+        return if (signaturesMatch(installed, downloaded)) {
+            ApkSignatureStatus.SAME
+        } else {
+            ApkSignatureStatus.DIFFERENT
+        }
     }
 
     fun canInstallUnknownApps(context: Context): Boolean {
