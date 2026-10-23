@@ -486,6 +486,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                     UpdateBanner(
                         version = bannerVersion,
                         summary = updateState.bannerSummary.orEmpty(),
+                        isFeature = updateState.bannerIsFeature,
                         onShowNotes = { updateCoordinator?.showPrompt() },
                         onDismiss = { updateCoordinator?.dismissBanner() }
                     )

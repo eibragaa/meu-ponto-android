@@ -29,16 +29,26 @@ import androidx.compose.ui.unit.dp
 /**
  * Banner compacto de atualização disponível na lista inicial.
  *
- * Recebe apenas textos e callbacks: `ui/` não conhece o pacote `updater/`, quem decide exibir e o
- * que fazer é a tela.
+ * A hierarquia é intencional: versão, tipo de mudança (novidades ou correções/melhorias), resumo e
+ * ação. Correções são apresentadas de forma genérica; detalhes ficam no diálogo.
+ *
+ * Recebe apenas textos e callbacks: `ui/` não conhece o pacote `updater/`.
  */
 @Composable
 fun UpdateBanner(
     version: String,
     summary: String,
+    isFeature: Boolean,
     onShowNotes: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val sectionLabel = if (isFeature) "Novidades" else "Correções e melhorias"
+    val sectionDetail = if (isFeature) {
+        summary.ifBlank { "Confira as novidades desta versão." }
+    } else {
+        "Aprimoramentos de estabilidade, desempenho e experiência."
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -60,24 +70,33 @@ fun UpdateBanner(
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = "Atualização disponível · v$version",
+                    text = "Atualização disponível",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
-                if (summary.isNotBlank()) {
-                    Text(
-                        text = summary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    text = "Versão $version",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = sectionLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = sectionDetail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
                 TextButton(
                     onClick = onShowNotes,
                     contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
                 ) {
-                    Text("Ver novidades")
+                    Text("Ver o que mudou")
                 }
             }
             IconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
