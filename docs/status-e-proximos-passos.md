@@ -220,6 +220,8 @@ Motivo: o celular tem APK com assinatura antiga. Sem a migração, nenhuma atual
 4. Conferir se o dia da entrada mostra as horas (ex.: 22/10 → 8h17).
 
 ### 7.2 Depois da migração
+Checklist detalhado do próximo release: [`plano-release-v0.5.1.md`](plano-release-v0.5.1.md).
+
 1. Testar no celular: scanner, galeria com OCR, edição, PDF individual e em lote, backup com e sem senha, restore, tema claro e escuro.
 2. Diagnosticar o updater no celular: informar a versão instalada antes da migração (P10).
 3. Para testar o fluxo de atualização real (P14): publicar `v0.5.1` (ex.: `versionName` `0.5.1` e `versionCode` 9), criar a tag e conferir se o celular oferece a atualização e instala.

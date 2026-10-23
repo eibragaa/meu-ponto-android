@@ -79,6 +79,8 @@ e credenciais fora do repositório.
 
 - [Padrão de engenharia](docs/engineering-standards.md) — camadas, nomenclatura, testes, git e release
 - [Status e próximos passos](docs/status-e-proximos-passos.md)
+- [Plano do próximo release (v0.5.1)](docs/plano-release-v0.5.1.md)
+- [Plano da feature de atualização ao abrir](docs/plano-feature-atualizacao-ao-abrir.md)
 - [Roadmap para a Play Store](docs/roadmap-aaa.md)
 - [Brand book](docs/brand-book.md)
 - [Plano de correções do editor](docs/plan-correcoes-editor.md)
