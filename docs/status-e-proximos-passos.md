@@ -1,6 +1,6 @@
 # Meu Ponto — status atual e próximos passos
 
-_Atualizado em 23/10/2026. Versão publicada: `v0.5.1` (`versionCode 9`)._
+_Atualizado em 23/10/2026. Versão publicada: `v0.6.0` (`versionCode 10`)._
 
 Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
 
@@ -98,12 +98,18 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - Release notes curadas aplicadas no GitHub com as correções de turno noturno e editor.
 - **Validado no aparelho:** o app instalado detectou a atualização e instalou a `0.5.1` pelo próprio updater.
 
-### 1.12 Feature de atualização ao abrir (23/10/2026, branch)
-- Branch `feat-update-ao-abrir` com fases 1–5 implementadas.
+### 1.12 Feature de atualização ao abrir (23/10/2026)
+- Branch `feat-update-ao-abrir` com fases 1–5 implementadas; PR #2 mesclado na `main`.
 - Verificação na abertura e ao voltar ao foreground (throttle de 30 min), banner, modal por abertura,
   “O que há de novo”, parser/erros tipados, preferências, checksum SHA-256 e aviso de assinatura.
 - 93 testes e CI verde no run `39918294742` da branch.
-- **Pendente:** QA no aparelho, PR e decisão de release (`0.6.0`).
+- **Publicado na `v0.6.0`** (run `39921690101`). QA visual do banner no aparelho ainda pendente.
+
+### 1.13 Release v0.6.0 (23/10/2026)
+- `versionName` `0.6.0` / `versionCode` 10 no commit `d5a0456`.
+- Tag `v0.6.0` enviada; run `39921690101` concluído com sucesso.
+- Release publicada como **Latest**, com `Meu-Ponto-v0.6.0.apk` e `app-play-release.aab`.
+- Release notes com seção **Novidades** para o banner destacar os dois primeiros itens.
 
 ---
 
@@ -132,13 +138,14 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 ### 3.0 Releases publicadas
 | Versão | Data | Estado | Assets | Assinatura |
 |---|---|---|---|---|
-| **`v0.5.1`** | 23/10/2026 06:17 UTC | **Latest** | `Meu-Ponto-v0.5.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| **`v0.6.0`** | 23/10/2026 08:09 UTC | **Latest** | `Meu-Ponto-v0.6.0.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| `v0.5.1` | 23/10/2026 06:17 UTC | Anterior | `Meu-Ponto-v0.5.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.5.0` | 22/10/2026 16:19 UTC | Anterior | `Meu-Ponto-v0.5.0.apk` (44,5 MB), `app-play-release.aab` (22,8 MB) | Keystore novo (`4ef464d5…`) |
 | `v0.4.0` | 20/10/2026 | Anterior | `Meu-Ponto-v0.4.0.apk` (61 MB), **build debug** (debuggable) | Chave do runner (`2aa251…`) |
 | `v0.3.3` | 16/10/2026 | Anterior | `Meu-Ponto-v0.3.3.apk` | Chave do runner (`8f347d…`) |
 
-- Run da tag `v0.5.1` concluído com sucesso; release marcado como **Latest**.
-- Efeito no updater: quem está na `0.5.0` passa a receber a `0.5.1`. Falta validar a instalação no aparelho.
+- Runs das tags `v0.5.1` e `v0.6.0` concluídos com sucesso; releases marcados como **Latest** na época.
+- Efeito no updater: quem está na `0.5.1` passa a receber a `0.6.0`; a atualização `0.5.0 → 0.5.1` já foi validada no aparelho.
 
 ### 3.1 Keystore de distribuição (criado em 22/10/2026)
 - Arquivo: `C:\Users\jeanb\.meuponto\meu-ponto-release.jks` (fora do repo; `.gitignore` bloqueia `*.jks`).
@@ -218,12 +225,14 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 ## 7. Próximos passos
 
 ### 7.1 Migração do celular (passo a passo, fazer uma vez)
-Motivo: o celular tem APK com assinatura antiga. Sem a migração, nenhuma atualização pelo GitHub instala.
+**Concluída em 23/10/2026:** o updater atualizou o aparelho de `0.5.0` para `0.5.1`, confirmando a assinatura e o acesso ao GitHub. O roteiro abaixo fica como registro.
+
+Motivo: o celular tinha APK com assinatura antiga. Sem a migração, nenhuma atualização pelo GitHub instala.
 
 1. No app atual do celular: **Backup** (ícone de nuvem no topo) → criar backup **com senha** → salvar o ZIP em um lugar seguro (Drive ou PC).
 2. Confirmar que o ZIP abre e que a senha está anotada.
 3. Desinstalar o Meu Ponto do celular.
-4. Instalar o **`Meu-Ponto-v0.5.0.apk`** da release Latest (https://github.com/eibragaa/meu-ponto-android/releases/tag/v0.5.0).
+4. Instalar o **`Meu-Ponto-v0.5.0.apk`** da release `v0.5.0` (https://github.com/eibragaa/meu-ponto-android/releases/tag/v0.5.0).
 5. Abrir o app → Backup → **Restaurar backup** → escolher o ZIP → digitar a senha.
 6. Conferir a quantidade de comprovantes e as horas.
 7. Em Sobre → "Buscar atualizações agora": deve dizer que está na versão mais recente (`v0.5.0`). Isso confirma o acesso ao GitHub.
@@ -266,4 +275,4 @@ Checklist do release publicado: [`plano-release-v0.5.1.md`](plano-release-v0.5.1
 - Aceitar `allowBackup=false` (P6)?
 - Qual pessoa ou canal será o encarregado (LGPD)?
 - Manter o `v0.4.0` público, marcar como pré-release ou remover (P3)?
-- Quando liberar a `v0.6.0` com o novo fluxo de atualização ao abrir (branch `feat-update-ao-abrir`)?
+- Quando validar visualmente o banner da `v0.6.0` no aparelho e planejar a próxima versão?

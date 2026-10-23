@@ -1,6 +1,6 @@
 # Feature — aviso de atualização ao abrir o app
 
-_Status: fases 1–5 implementadas na branch `feat-update-ao-abrir` em 23/10/2026. Fase 6 (QA no aparelho e release) pendente. CI da branch: run `39918294742` (testes, lint, APK e AAB)._
+_Status: fases 1–5 implementadas, PR #2 mesclado e release `v0.6.0` publicado em 23/10/2026 (`versionCode 10`). QA visual do banner no aparelho pendente. CI da branch: run `39918294742`; CI da tag: run `39921690101`._
 
 Objetivo: ao abrir o Meu Ponto (flavor `github`), verificar se existe uma versão nova no GitHub e
 avisar o usuário de forma clara, mostrando as correções e novidades daquela versão.
@@ -318,7 +318,7 @@ dá histórico versionado e evita texto automático.
 | 3 | `UpdateCoordinator`, lifecycle, banner e modal por abertura | Implementada |
 | 4 | “O que há de novo” após atualizar | Implementada |
 | 5 | Hardening: checksum, assinatura e resumo do banner (ETag adiado) | Implementada |
-| 6 | QA no aparelho, docs e release | Pendente |
+| 6 | QA no aparelho, docs e release | Release publicado; QA visual pendente |
 
 Sugestão de versão: **0.6.0** (feature de UX), depois da `0.5.1` de correções. Se a prioridade for
 só o aviso mínimo, dá para fazer as fases 1–3 e lançar como `0.5.2`, deixando o “O que há de novo”
