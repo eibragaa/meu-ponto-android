@@ -66,6 +66,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -111,6 +112,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -185,6 +187,7 @@ import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -201,6 +204,9 @@ import kotlinx.coroutines.withContext
  * Ordem do arquivo: raiz e tema -> estado da tela -> lista (cabeçalho, mês, dia, card) ->
  * folhas (adicionar, backup, organizar, editor) -> utilitários de UI.
  */
+/** Tempo que o resultado da verificação manual fica visível no rodapé. */
+private const val UPDATE_CHECK_MESSAGE_MS = 6000L
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -358,11 +364,19 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         updateCoordinator?.checkNow()
     }
 
-    // A verificação manual devolve o resultado pelo estado; a tela só apresenta e consome.
+    // A verificação manual devolve o resultado pelo estado. A resposta aparece no próprio rodapé,
+    // onde o usuário tocou: em snackbar ela ficava atrás do FAB e do rodapé, parecendo ignorada.
+    var updateCheckMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(updateState.manualMessage) {
         updateState.manualMessage?.let { message ->
-            showMessage(message)
+            updateCheckMessage = message
             updateCoordinator?.consumeManualMessage()
+        }
+    }
+    LaunchedEffect(updateCheckMessage) {
+        if (updateCheckMessage != null) {
+            delay(UPDATE_CHECK_MESSAGE_MS)
+            updateCheckMessage = null
         }
     }
 
@@ -627,7 +641,15 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                     }
                 }
             }
-            item { TrustFooter(versionName = currentVersion, updaterEnabled = updaterEnabled, onCheckUpdate = { checkUpdatesManually() }) }
+            item {
+                TrustFooter(
+                    versionName = currentVersion,
+                    updaterEnabled = updaterEnabled,
+                    isChecking = updateState.isChecking,
+                    checkMessage = updateCheckMessage,
+                    onCheckUpdate = { checkUpdatesManually() }
+                )
+            }
         }
     }
 
@@ -1305,6 +1327,8 @@ private fun EmptyState(onAdd: () -> Unit, isSearch: Boolean) {
 private fun TrustFooter(
     versionName: String,
     updaterEnabled: Boolean,
+    isChecking: Boolean,
+    checkMessage: String?,
     onCheckUpdate: () -> Unit
 ) {
     Column(
@@ -1320,16 +1344,38 @@ private fun TrustFooter(
             Spacer(Modifier.width(6.dp))
             Text("Seus arquivos ficam privados neste aparelho", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(
-            text = if (updaterEnabled) "Meu Ponto v$versionName • Toque para verificar atualizações" else "Meu Ponto v$versionName",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-            modifier = if (updaterEnabled) {
-                Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onCheckUpdate).padding(horizontal = 6.dp, vertical = 2.dp)
-            } else {
-                Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        if (updaterEnabled && isChecking) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Verificando atualizações…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        )
+        } else {
+            Text(
+                text = if (updaterEnabled) "Meu Ponto v$versionName • Toque para verificar atualizações" else "Meu Ponto v$versionName",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                modifier = if (updaterEnabled) {
+                    Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onCheckUpdate).padding(horizontal = 6.dp, vertical = 2.dp)
+                } else {
+                    Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                }
+            )
+        }
+        // Resultado da verificação manual no mesmo lugar do toque, para não ficar atrás do FAB.
+        checkMessage?.let { message ->
+            Text(
+                message,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        }
     }
 }
 
