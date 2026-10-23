@@ -89,20 +89,23 @@ class WorkStatsCalculatorTest {
 
     @Test
     fun `jornada acima de 16 horas no mesmo comprovante fica pendente`() {
+        // 08:00 de um dia até 01:00 do dia seguinte = 17h, acima do teto de 16h.
         val days = WorkStatsCalculator.dayStats(
-            listOf(receipt(entry = "08:00", exit = "09:00"))
+            listOf(receipt(entry = "08:00", exit = "01:00"))
         )
 
         assertEquals(0, days.getValue("22/10/2026").minutes)
         assertTrue(days.getValue("22/10/2026").pending)
-        assertNull(WorkStatsCalculator.durationMinutes("08:00", "09:00"))
+        assertNull(WorkStatsCalculator.durationMinutes("08:00", "01:00"))
     }
 
     @Test
     fun `duracao aceita de 1 minuto ate 16 horas`() {
         assertEquals(1, WorkStatsCalculator.durationMinutes("08:00", "08:01"))
+        assertEquals(60, WorkStatsCalculator.durationMinutes("08:00", "09:00"))
         assertEquals(960, WorkStatsCalculator.durationMinutes("00:00", "16:00"))
         assertEquals(480, WorkStatsCalculator.durationMinutes("22:00", "06:00"))
+        assertNull(WorkStatsCalculator.durationMinutes("00:00", "16:01"))
         assertNull(WorkStatsCalculator.durationMinutes("08:00", "08:00"))
         assertNull(WorkStatsCalculator.durationMinutes(null, "08:00"))
     }
