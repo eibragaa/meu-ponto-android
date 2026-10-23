@@ -44,7 +44,6 @@ private val AppTypography = androidx.compose.material3.Typography(
     labelSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 14.sp)
 )
 
-@Composable
 /**
  * Tema do app. Os esquemas claro/escuro são nomeados por papel do Material 3; a marca (teal/coral)
  * aparece em `primary`/`secondary` e as superfícies vêm dos tokens acima.
@@ -52,6 +51,7 @@ private val AppTypography = androidx.compose.material3.Typography(
  * [darkTheme] é decidido pelo usuário (persistido em preferências) e cai no tema do sistema na
  * primeira execução.
  */
+@Composable
 internal fun MeuPontoTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (darkTheme) {

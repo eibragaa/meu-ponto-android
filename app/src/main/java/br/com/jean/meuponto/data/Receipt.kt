@@ -15,7 +15,7 @@ import androidx.room.PrimaryKey
  * - apenas uma batida -> só [entryTime] **ou** só [exitTime];
  * - um horário solto sem tipo -> [workTime].
  *
- * Migrar esses campos para `LocalDate`/`LocalTime` está no roadmap do padrão de engenharia (P7):
+ * Migrar esses campos para `LocalDate`/`LocalTime` está no roadmap do padrão de engenharia (ENG-4):
  * é a refatoração mais invasiva e exige conversores do Room.
  */
 @Entity(tableName = "receipts")

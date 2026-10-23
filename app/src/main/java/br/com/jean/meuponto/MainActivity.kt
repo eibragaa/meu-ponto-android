@@ -222,7 +222,7 @@ private fun MeuPontoRoot() {
 /**
  * Dono do estado da tela inicial: lista, filtros, folhas e ações de arquivo.
  *
- * O estado vive aqui (e não em um ViewModel) por decisão histórica; é a pendência P4 do padrão de
+ * O estado vive aqui (e não em um ViewModel) por decisão histórica; é a pendência ENG-1 do padrão de
  * engenharia. Os valores derivados usam `remember(chaves)` para não recalcular a cada recomposição.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -240,7 +240,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var selectedGroupMode by rememberSaveable { mutableStateOf("month") }
 
     // Uma flag por folha (bottom sheet) aberta. São mutuamente exclusivas na prática; unificá-las
-    // em um único estado selado está registrado como pendência no padrão de engenharia (P4).
+    // em um único estado selado está registrado como pendência no padrão de engenharia (ENG-1).
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
     var showOrganizeSheet by rememberSaveable { mutableStateOf(false) }

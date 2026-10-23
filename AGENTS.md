@@ -49,8 +49,8 @@ Requisitos: JDK 17 e Android SDK 36 (`local.properties` não vai para o git).
 
 ## Pendências que não devem ser reabertas sem plano
 
-`P4` ViewModel/estado selado · `P5` enums de modo/filtro · `P6` `strings.xml` + escala de
-espaçamento · `P7` `Receipt` com `LocalDate`/`LocalTime` · `P8` erros tipados · `P9` quebrar
+`ENG-1` ViewModel/estado selado · `ENG-2` enums de modo/filtro · `ENG-3` `strings.xml` + escala de
+espaçamento · `ENG-4` `Receipt` com `LocalDate`/`LocalTime` · `ENG-5` erros tipados · `ENG-6` quebrar
 `EditReceiptSheet` · `P15` CI (`setup-java` v5) · `P17` aviso de assinatura no updater.
 
 Detalhes e ordem recomendada: `docs/engineering-standards.md`, seção 11. Estado do produto e

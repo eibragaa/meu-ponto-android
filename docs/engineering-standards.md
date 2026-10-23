@@ -76,7 +76,7 @@ Regra de dependência (permitido → proibido):
 | `updater/` | `android.*`, `data.CacheMaintenance` | `domain/`, `ui/` |
 
 > Exceção consciente e documentada: `domain/` conhece `data.Receipt` (entidade Room). Trocar isso por
-> um modelo próprio é a pendência **P7**; até lá, não agrave (não adicione anotações Room em
+> um modelo próprio é a pendência **ENG-4**; até lá, não agrave (não adicione anotações Room em
 > `domain/`).
 
 ### Onde colocar código novo
@@ -87,7 +87,7 @@ Regra de dependência (permitido → proibido):
 | Leitura/gravação de arquivo, ZIP, PDF, rede, OCR | `data/` |
 | Formatação para exibição (datas, minutos, rótulos) | `ui/` (ou `domain/` se precisar fora da UI) |
 | Componente visual reutilizável | `ui/` |
-| Composição/estado de tela | `MainActivity.kt` até a pendência **P4** |
+| Composição/estado de tela | `MainActivity.kt` até a pendência **ENG-1** |
 
 ---
 
@@ -100,18 +100,27 @@ Regra de dependência (permitido → proibido):
 | Parâmetros de função | até 4 | 6 (acima: use um objeto de entrada) |
 | Aninhamento (`if`/`for`) | 2 níveis | 3 níveis |
 
-Situação atual (baseline de 22/10/2026, para não regredir):
+Situação atual (baseline de 22/10/2026, para não regredir) — medido por chaves, não por linha:
 
-- `MainActivity.kt`: **1.580 LOC** (era 2.152 antes da extração). Ainda é o maior arquivo do repo e
-  o alvo natural de novas extrações.
-- Maiores funções: `startScanner` ~50 linhas, `EditReceiptSheet` ~177, `SummaryCard` ~111,
-  `restoreBackup` ~120 (com validações).
-- Produção: 4.435 LOC em 19 arquivos. Testes: 311 LOC, 22 testes.
+- `MainActivity.kt`: **1.568 LOC** (era 2.152 antes da extração). Ainda é o maior arquivo do repo.
+- Funções acima do limite duro (80 linhas), do maior para o menor:
+  `MeuPontoApp` **504**, `UpdateDialog` 266, `PayrollSettingsSheet` 183, `EditReceiptSheet` 176,
+  `AboutSheet` 162, `ReceiptViewer` 152, `SummaryCard` 109, `restoreBackup` 93,
+  `InsightsSheet` 93, `ReceiptCard` 81.
+- Mediana das 64 funções: **18,5 linhas** — a maioria está saudável; o problema é concentrado.
+- Produção: 4.435 LOC em 19 arquivos. Testes: 311 LOC, 22 testes, todos em JVM.
 
 **Regra do escoteiro**: ao tocar em algo grande, extraia uma peça para o lugar certo (seção 2) e
 deixe o arquivo menor. Não é obrigatório refatorar tudo de uma vez; é obrigatório não piorar.
-`EditReceiptSheet` é o próximo candidato óbvio (estado de campos + validação podem virar
-`ui/ReceiptEditorState.kt`).
+
+Ordem sugerida de extração (do maior ganho para o menor risco):
+
+1. `MeuPontoApp` (504): launchers de arquivo (`importReceipt`, `createBackupLauncher`,
+   `restoreBackupLauncher`, `scannerLauncher`) viram `ui/ReceiptActions.kt` devolvendo callbacks;
+   o `Scaffold`/barra de ações sai para `ui/HomeScaffold.kt`.
+2. `EditReceiptSheet` (176): estado de campos + validação para `ui/ReceiptEditorState.kt`.
+3. `UpdateDialog`/`AboutSheet` (266/162): dividir por etapa do estado (`Idle`, `Downloading`,
+   `ReadyToInstall`, `Error`) — o `sealed` já existe em `updater/AppUpdater.kt`.
 
 ---
 
@@ -129,7 +138,7 @@ deixe o arquivo menor. Não é obrigatório refatorar tudo de uma vez; é obriga
   ```kotlin
   @Test fun `pareia entrada e saida de turno que cruza a meia-noite`() { … }
   ```
-- **Comentários de pendência**: `// PENDÊNCIA P4: …` com o código da seção 11.
+- **Comentários de pendência**: `// PENDÊNCIA ENG-1: …` com o código da seção 11.
 
 ---
 
@@ -161,7 +170,7 @@ TODO só entra com código de pendência da seção 11.
   `onFailure` que produz mensagem específica.
 - Proibido: `catch (_: Exception) {}` sem ação; log/`println` como tratamento.
 - Pendência conhecida: mensagens genéricas atuais (“Não foi possível…”) devem ser refinadas junto
-  da tipagem dos erros (**P8**).
+  da tipagem dos erros (**ENG-5**).
 
 ---
 
@@ -175,9 +184,9 @@ TODO só entra com código de pendência da seção 11.
 - `LaunchedEffect` só para efeito colateral único por chave; nada de lógica de negócio dentro.
 - Toda lista longa (`LazyColumn`) precisa de `key` estável (id do modelo).
 - Cores: `MaterialTheme.colorScheme` ou tokens de `ui/Theme.kt`. Espaçamentos: múltiplos de 4dp,
-  preferindo constantes nomeadas a `.dp` solto (pendência **P6**).
-- Pendências estruturais: 8 flags booleanas de folha + ausência de ViewModel (**P4**) e strings
-  hardcoded (**P6**).
+  preferindo constantes nomeadas a `.dp` solto (pendência **ENG-3**).
+- Pendências estruturais: 8 flags booleanas de folha + ausência de ViewModel (**ENG-1**) e strings
+  hardcoded (**ENG-3**).
 
 ---
 
@@ -251,12 +260,12 @@ versão/tag/release só com autorização explícita do dono do projeto.
 
 | ID | Pendência | Onde | Por que não agora |
 |---|---|---|---|
-| P4 | Estado de tela em `ViewModel` + `sealed` de folha ativa | `MainActivity.kt` | mexe em ~30 pontos de UI; precisa de teste de UI antes |
-| P5 | `enum`/`sealed` para `mode`, `selectedFilter`, `selectedGroupMode` | `ui/` + `MainActivity` | mecânico, mas amplo; fazer junto de P4 |
-| P6 | `strings.xml` (302 literais) + escala de espaçamento/tema | `ui/`, `res/` | pré-requisito para i18n; alto volume |
-| P7 | `Receipt` com `LocalDate`/`LocalTime` + conversores Room | `data/`, `domain/` | migração de banco + OCR + UI; fazer por último |
-| P8 | Erros tipados e mensagens específicas | `data/`, `updater/`, UI | depende de desenhar os estados de erro |
-| P9 | `EditReceiptSheet` (177 linhas) → estado + validação próprios | `MainActivity.kt` | próximo passo natural, depois de P4/P5 |
+| ENG-1 | Estado de tela em `ViewModel` + `sealed` de folha ativa | `MainActivity.kt` | mexe em ~30 pontos de UI; precisa de teste de UI antes |
+| ENG-2 | `enum`/`sealed` para `mode`, `selectedFilter`, `selectedGroupMode` | `ui/` + `MainActivity` | mecânico, mas amplo; fazer junto de ENG-1 |
+| ENG-3 | `strings.xml` (302 literais) + escala de espaçamento/tema | `ui/`, `res/` | pré-requisito para i18n; alto volume |
+| ENG-4 | `Receipt` com `LocalDate`/`LocalTime` + conversores Room | `data/`, `domain/` | migração de banco + OCR + UI; fazer por último |
+| ENG-5 | Erros tipados e mensagens específicas | `data/`, `updater/`, UI | depende de desenhar os estados de erro |
+| ENG-6 | `EditReceiptSheet` (177 linhas) → estado + validação próprios | `MainActivity.kt` | próximo passo natural, depois de ENG-1/ENG-2 |
 | P15 | CI: `setup-java` v4 → v5, `ubuntu-latest` fixo | `.github/workflows` | avisos de depreciação, sem quebra hoje |
 | P17 | Avisar assinatura diferente antes do instalador | `updater/` | precisa de teste com APK de outra chave |
 
