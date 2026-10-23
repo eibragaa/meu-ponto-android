@@ -45,13 +45,13 @@ Requisitos: JDK 17 e Android SDK 36 (`local.properties` não vai para o git).
 | `domain/` | `WorkStats.kt` (pareamento/ horas), `PayrollSettings.kt`, `ReceiptLabels.kt` |
 | `data/` | Room (`Receipt`, `ReceiptDao`, `AppDatabase`), `ReceiptImporter`, `BackupService`, `PdfExporter`, `CacheMaintenance` |
 | `ui/` | `Theme`, `MaskedInput`, `ReceiptFormatting`, `ReceiptSections`, folhas e visualizador |
-| `updater/` | atualização in-app via GitHub Releases |
+| `updater/` | atualização in-app via GitHub Releases: `UpdateCoordinator`, `UpdateParser`, `UpdatePreferences`, `ApkIntegrity`, `AppUpdater`, `UpdateUi` |
 
 ## Pendências que não devem ser reabertas sem plano
 
 `ENG-1` ViewModel/estado selado · `ENG-2` enums de modo/filtro · `ENG-3` `strings.xml` + escala de
 espaçamento · `ENG-4` `Receipt` com `LocalDate`/`LocalTime` · `ENG-5` erros tipados · `ENG-6` quebrar
-`EditReceiptSheet` · `P15` CI (`setup-java` v5) · `P17` aviso de assinatura no updater.
+`EditReceiptSheet` · `P15` CI (`setup-java` v5). `P17` (aviso de assinatura) foi implementado na branch `feat-update-ao-abrir`.
 
 Detalhes e ordem recomendada: `docs/engineering-standards.md`, seção 11. Estado do produto e
 próximos passos de release: `docs/status-e-proximos-passos.md`.

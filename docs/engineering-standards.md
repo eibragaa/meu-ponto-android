@@ -60,9 +60,17 @@ app/src/main/java/br/com/jean/meuponto/
 │   ├── ReceiptFormatting.kt       rótulos de mês/dia/semana
 │   ├── ReceiptSections.kt         agrupamento da lista
 │   ├── InsightsSheet.kt · PayrollSettingsSheet.kt · ReceiptViewer.kt
+│   ├── UpdateBanner.kt            banner de atualização disponível
+│   └── WhatsNewSheet.kt           novidades após instalar
 └── updater/               atualização in-app (GitHub Releases)
-    ├── AppUpdater.kt              download/instalação
-    └── UpdateUi.kt                diálogos e estados
+    ├── AppUpdater.kt              consulta, download e instalação
+    ├── UpdateModels.kt            modelos, resultados e erros tipados
+    ├── UpdateParser.kt            parser do release e resumo do banner
+    ├── UpdatePreferences.kt       throttle, dispensa e notas pendentes
+    ├── UpdatePolicy.kt            quando verificar e quando mostrar banner
+    ├── UpdateCoordinator.kt       estado de processo, lifecycle e prompts
+    ├── ApkIntegrity.kt            checksum SHA-256 e assinatura do APK
+    └── UpdateUi.kt                diálogos, Sobre e instalação
 ```
 
 Regra de dependência (permitido → proibido):
@@ -100,15 +108,15 @@ Regra de dependência (permitido → proibido):
 | Parâmetros de função | até 4 | 6 (acima: use um objeto de entrada) |
 | Aninhamento (`if`/`for`) | 2 níveis | 3 níveis |
 
-Situação atual (baseline de 22/10/2026, para não regredir) — medido por chaves, não por linha:
+Situação atual (baseline de 23/10/2026, para não regredir) — medido por chaves, não por linha:
 
-- `MainActivity.kt`: **1.567 LOC** (era 2.152 antes da extração). Ainda é o maior arquivo do repo.
+- `MainActivity.kt`: **1.611 LOC** (era 2.152 antes da extração). Ainda é o maior arquivo do repo.
 - Funções acima do limite duro (80 linhas), do maior para o menor:
   `MeuPontoApp` **504**, `UpdateDialog` 266, `PayrollSettingsSheet` 183, `EditReceiptSheet` 176,
   `AboutSheet` 162, `ReceiptViewer` 152, `SummaryCard` 109, `restoreBackup` 93,
   `InsightsSheet` 93, `ReceiptCard` 81.
 - Mediana das 64 funções: **18,5 linhas** — a maioria está saudável; o problema é concentrado.
-- Produção: 4.435 LOC em 19 arquivos. Testes: 440 LOC, **35 testes** em 4 arquivos, todos em JVM.
+- Produção: 5.575 LOC em 29 arquivos. Testes: 1.216 LOC, **93 testes** em 9 arquivos, todos em JVM.
 
 **Regra do escoteiro**: ao tocar em algo grande, extraia uma peça para o lugar certo (seção 2) e
 deixe o arquivo menor. Não é obrigatório refatorar tudo de uma vez; é obrigatório não piorar.
@@ -271,7 +279,7 @@ versão/tag/release só com autorização explícita do dono do projeto.
 | ENG-5 | Erros tipados e mensagens específicas | `data/`, `updater/`, UI | depende de desenhar os estados de erro |
 | ENG-6 | `EditReceiptSheet` (177 linhas) → estado + validação próprios | `MainActivity.kt` | próximo passo natural, depois de ENG-1/ENG-2 |
 | P15 | CI: `setup-java` v4 → v5, `ubuntu-latest` fixo | `.github/workflows` | avisos de depreciação, sem quebra hoje |
-| P17 | Avisar assinatura diferente antes do instalador | `updater/` | precisa de teste com APK de outra chave |
+| P17 | ~~Avisar assinatura diferente antes do instalador~~ | `updater/` | **Implementado na branch `feat-update-ao-abrir`**; falta release |
 | ENG-7 | Workflow falha em execução manual: `GITHUB_REF_NAME` com `/` (nome de branch) quebra o `cp` do APK **depois** de testes, lint e builds passarem | `.github/workflows/android-release.yml`, passo "Give APK a product filename" | correção de 1 linha (abaixo), mas exige token com escopo `workflow` para dar push |
 
 ### Correção sugerida para ENG-7
