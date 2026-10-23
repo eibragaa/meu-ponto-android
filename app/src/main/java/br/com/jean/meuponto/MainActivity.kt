@@ -143,6 +143,7 @@ import br.com.jean.meuponto.ui.MonthSection
 import br.com.jean.meuponto.ui.PayrollSettingsSheet
 import br.com.jean.meuponto.ui.PtBrLocale
 import br.com.jean.meuponto.ui.ReceiptViewer
+import br.com.jean.meuponto.ui.SwipeToDeleteBox
 import br.com.jean.meuponto.ui.TealDark
 import br.com.jean.meuponto.ui.UpdateBanner
 import br.com.jean.meuponto.ui.WhatsNewSheet
@@ -578,7 +579,8 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                                         },
                                         onOpen = { receiptBeingViewed = receipt },
                                         onEdit = { receiptBeingEdited = receipt },
-                                        onShare = { shareAsPdf(context, listOf(receipt)) }
+                                        onShare = { shareAsPdf(context, listOf(receipt)) },
+                                        onRequestDelete = { receiptPendingDelete = receipt }
                                     )
                                 }
                             }
@@ -606,7 +608,8 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                             },
                             onOpen = { receiptBeingViewed = receipt },
                             onEdit = { receiptBeingEdited = receipt },
-                            onShare = { shareAsPdf(context, listOf(receipt)) }
+                            onShare = { shareAsPdf(context, listOf(receipt)) },
+                            onRequestDelete = { receiptPendingDelete = receipt }
                         )
                     }
                 }
@@ -1168,75 +1171,81 @@ private fun ReceiptCard(
     onToggleSelection: () -> Unit,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onRequestDelete: () -> Unit
 ) {
     val duration = WorkStatsCalculator.durationMinutes(receipt)
-    Card(
-        Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = { if (isSelectionMode) onToggleSelection() else onOpen() },
-                onLongClick = { if (!isSelectionMode) onToggleSelection() }
-            ),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    SwipeToDeleteBox(
+        enabled = !isSelectionMode,
+        onDeleteRequest = onRequestDelete
     ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            ReceiptThumbnail(receipt.imagePath)
-            Spacer(Modifier.width(13.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    receipt.workDate.ifBlank { "Data pendente" },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        Card(
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = { if (isSelectionMode) onToggleSelection() else onOpen() },
+                    onLongClick = { if (!isSelectionMode) onToggleSelection() }
+                ),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                ReceiptThumbnail(receipt.imagePath)
+                Spacer(Modifier.width(13.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        receiptTimeLabel(receipt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = when {
-                            receipt.needsReview -> MaterialTheme.colorScheme.error
-                            receipt.entryTime == null && receipt.exitTime == null && receipt.workTime.isBlank() ->
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            else -> MaterialTheme.colorScheme.primary
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        receipt.workDate.ifBlank { "Data pendente" },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (duration != null) {
-                        Spacer(Modifier.width(8.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                formatMinutes(duration),
-                                Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            receiptTimeLabel(receipt),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = when {
+                                receipt.needsReview -> MaterialTheme.colorScheme.error
+                                receipt.entryTime == null && receipt.exitTime == null && receipt.workTime.isBlank() ->
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                else -> MaterialTheme.colorScheme.primary
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (duration != null) {
+                            Spacer(Modifier.width(8.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    formatMinutes(duration),
+                                    Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
                         }
                     }
+                    Text(
+                        if (receipt.needsReview) "Revisar data/horário" else File(receipt.imagePath).name,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (receipt.needsReview) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Text(
-                    if (receipt.needsReview) "Revisar data/horário" else File(receipt.imagePath).name,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (receipt.needsReview) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (isSelectionMode) {
-                androidx.compose.material3.Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
-            } else {
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Outlined.Edit, contentDescription = "Editar data e horário", tint = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = onShare) {
-                    Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = MaterialTheme.colorScheme.primary)
+                if (isSelectionMode) {
+                    androidx.compose.material3.Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
+                } else {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Outlined.Edit, contentDescription = "Editar data e horário", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    IconButton(onClick = onShare) {
+                        Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }
