@@ -46,6 +46,13 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
+/**
+ * Configuração do período de folha e da jornada esperada.
+ *
+ * Só entrega o resultado ao confirmar ([onSave]); cancelar descarta tudo. Regras de validação que a
+ * folha aplica: data final não pode ser anterior à inicial, e a jornada esperada é opcional (sem ela
+ * o app não calcula saldo). Dias marcados em `daysOff` não contam como falta no período.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PayrollSettingsSheet(

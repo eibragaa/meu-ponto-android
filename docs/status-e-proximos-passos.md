@@ -84,6 +84,15 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 
 ---
 
+### 1.10 Reorganização do código (22/10, noite)
+- `MainActivity.kt` passou de 2.152 para **1.567 linhas**: tema, formatação de datas, agrupamento da lista, máscaras, OCR, backup, PDF e limpeza de cache saíram para `ui/` e `data/` (nada de lógica alterada nesse commit).
+- Regra de duração unificada: `durationMinutes` passou a aplicar o mesmo teto de 16h do pareamento (antes, entrada+saída no mesmo comprovante aceitava jornada irreal).
+- Testes: 16 → **35** (novos: máscaras/P18, formatação de minutos, bordas de comparação de versão, consistência de jornada).
+- Padrão de engenharia do repositório criado em [`engineering-standards.md`](engineering-standards.md) (+ `AGENTS.md` e PR template) — vale para pessoa e para qualquer agente de IA.
+- **Pendente:** compilar/testar no PC (`:app:testPlayDebugUnitTest`, `lintPlayDebug`) antes do merge; extração do `MeuPontoApp` (504 linhas) segue no roadmap do padrão.
+
+---
+
 ## 2. Estado atual do código
 
 | Área | Estado |
@@ -96,9 +105,10 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 | Restore | Implementado, com checagem de duplicata por `capturedAt` |
 | Room | v2, schema exportado. Migração 1→2 sem teste automatizado |
 | R8 em release | Ativado, sem regras extras. Testado só no WSA (fluxo completo não rodado) |
-| Testes unitários | `WorkStatsCalculatorTest` e `AppUpdaterTest`. Nenhum teste novo |
+| Testes unitários | 35 testes em 4 arquivos: `WorkStatsCalculatorTest`, `FormattingTest`, `MaskedInputTest`, `AppUpdaterTest`. Backup/PDF/DAO ainda sem teste |
 | Strings | Hardcoded em pt-BR. Sem `strings.xml` |
-| Arquitetura | `MainActivity.kt` com ~2135 linhas. Sem ViewModel nem Repository |
+| Arquitetura | `MainActivity.kt` com 1.567 linhas + camadas `domain/`, `data/`, `ui/`, `updater/`. Sem ViewModel nem Repository |
+| Padrão de engenharia | [`engineering-standards.md`](engineering-standards.md) + [`AGENTS.md`](../AGENTS.md). Pendências `ENG-1` a `ENG-6` |
 | Acessibilidade | Não auditada. Seleção de comprovantes só por long-press |
 
 ---

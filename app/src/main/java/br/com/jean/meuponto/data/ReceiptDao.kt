@@ -6,6 +6,12 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Acesso à tabela `receipts`.
+ *
+ * Consultas de listagem ordenam pelo dia do comprovante e, dentro do dia, pelo momento da captura;
+ * comprovantes sem data (OCR falhou) vão para o topo porque são os que exigem ação do usuário.
+ */
 @Dao
 interface ReceiptDao {
     @Query(
@@ -31,6 +37,7 @@ interface ReceiptDao {
     @Query("SELECT * FROM receipts WHERE id = :id")
     suspend fun getById(id: Long): Receipt?
 
+    /** Usado no restore para deduplicar sem depender do `id` antigo (que é regenerado). */
     @Query("SELECT * FROM receipts WHERE capturedAt = :capturedAt")
     suspend fun getByCapturedAt(capturedAt: Long): List<Receipt>
 

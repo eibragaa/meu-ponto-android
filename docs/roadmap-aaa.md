@@ -6,6 +6,8 @@ Objetivo: aprovação na Google Play e qualidade de produto acima da média (est
 
 Legenda: `[ ]` pendente · `[x]` concluído · **(B)** bloqueador de publicação.
 
+Convenções de código, limites e definição de pronto: [`engineering-standards.md`](engineering-standards.md).
+
 ---
 
 ## 0. Resumo

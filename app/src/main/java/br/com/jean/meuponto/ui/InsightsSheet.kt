@@ -36,6 +36,12 @@ import java.time.format.DateTimeFormatter
 
 private val insightDateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
+/**
+ * Resumo do período de folha: total, média, pendências, projeção e comparação com o período anterior.
+ *
+ * Recebe [PeriodStats] já calculado — a tela não recalcula nada e não acessa o banco. Quando o
+ * período é inválido, `stats.days` vem vazio e a folha mostra só o aviso, sem números enganosos.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InsightsSheet(stats: PeriodStats, onDismiss: () -> Unit) {

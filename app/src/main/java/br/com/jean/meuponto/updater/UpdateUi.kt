@@ -59,6 +59,13 @@ private fun formatFileSize(bytes: Long): String {
     return String.format(Locale.US, "%.1f MB", mb)
 }
 
+/**
+ * Diálogo do atualizador in-app, do "tem versão nova" ao "instalar".
+ *
+ * O fluxo reflete [UpdateDownloadState]: baixar mostra progresso, concluir pede permissão de
+ * instalação (`REQUEST_INSTALL_PACKAGES`) e só então abre o instalador do sistema. Falha de
+ * assinatura aparece aqui como erro porque o Android só a detecta no momento da instalação.
+ */
 @Composable
 fun UpdateDialog(
     updateInfo: AppUpdateInfo,
@@ -327,6 +334,13 @@ fun UpdateDialog(
     )
 }
 
+/**
+ * Folha "Sobre": versão instalada, aviso de que o app não é registro oficial de ponto, acesso à
+ * política de privacidade e verificação manual de atualização.
+ *
+ * `updaterEnabled` é `false` na flavor `play` — a Play Store não permite instalar APK por fora, então
+ * a opção de buscar atualização simplesmente não aparece lá.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutSheet(
