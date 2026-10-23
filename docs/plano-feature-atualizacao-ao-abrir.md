@@ -1,6 +1,6 @@
 # Feature — aviso de atualização ao abrir o app
 
-_Status: fases 1–5 implementadas, PR #2 mesclado e release `v0.6.0` publicado em 23/10/2026 (`versionCode 10`). QA visual do banner no aparelho pendente. CI da branch: run `39918294742`; CI da tag: run `39921690101`._
+_Status: fases 1–5 implementadas, PR #2 mesclado e releases `v0.6.0`/`v0.6.1` publicados em 23/10/2026. A `v0.6.1` (`versionCode 11`) é a versão de teste do banner. QA visual no aparelho pendente. CI da tag: run `39924015750`._
 
 Objetivo: ao abrir o Meu Ponto (flavor `github`), verificar se existe uma versão nova no GitHub e
 avisar o usuário de forma clara, mostrando as correções e novidades daquela versão.
@@ -318,7 +318,7 @@ dá histórico versionado e evita texto automático.
 | 3 | `UpdateCoordinator`, lifecycle, banner e modal por abertura | Implementada |
 | 4 | “O que há de novo” após atualizar | Implementada |
 | 5 | Hardening: checksum, assinatura e resumo do banner (ETag adiado) | Implementada |
-| 6 | QA no aparelho, docs e release | Release publicado; QA visual pendente |
+| 6 | QA no aparelho, docs e release | `v0.6.1` publicada para teste; QA visual pendente |
 
 Sugestão de versão: **0.6.0** (feature de UX), depois da `0.5.1` de correções. Se a prioridade for
 só o aviso mínimo, dá para fazer as fases 1–3 e lançar como `0.5.2`, deixando o “O que há de novo”
