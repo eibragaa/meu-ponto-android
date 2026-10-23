@@ -209,13 +209,48 @@ class UpdateParserTest {
     }
 
     @Test
-    fun `resume a v0 5 1 comecando pelo turno noturno`() {
-        val summary = summarizeReleaseNotes(releaseNotesV051)
+    fun `banner da v0 5 1 resume correcoes de forma generica`() {
+        val summary = summarizeReleaseForBanner(releaseNotesV051)
 
-        assertEquals(
-            "Turno noturno agora é pareado entre comprovantes e entre dias; a duração é creditada no dia da",
-            summary
-        )
+        assertEquals("Correções e melhorias", summary.text)
+        assertFalse(summary.isFeature)
+    }
+
+    @Test
+    fun `banner destaca ate duas novidades`() {
+        val notes = """
+            # Meu Ponto v0.6.0
+
+            ## Novidades
+
+            - Backup automático com senha
+            - Tema novo para o editor
+            - Item que não deve aparecer no banner
+
+            ## Correções e melhorias
+
+            - Ajustes internos
+        """.trimIndent()
+
+        val summary = summarizeReleaseForBanner(notes)
+
+        assertEquals("Backup automático com senha · Tema novo para o editor", summary.text)
+        assertTrue(summary.isFeature)
+    }
+
+    @Test
+    fun `banner usa correcoes genericas quando so ha melhorias`() {
+        val notes = """
+            ## Melhorias
+
+            - Estabilidade
+            - Desempenho
+        """.trimIndent()
+
+        val summary = summarizeReleaseForBanner(notes)
+
+        assertEquals("Correções e melhorias", summary.text)
+        assertFalse(summary.isFeature)
     }
 
     @Test
@@ -245,9 +280,9 @@ class UpdateParserTest {
 
         headers.forEach { header ->
             assertEquals(
+                "cabeçalho: $header",
                 "Item relevante",
-                summarizeReleaseNotes("$header\n\n- Item relevante"),
-                "cabeçalho: $header"
+                summarizeReleaseNotes("$header\n\n- Item relevante")
             )
         }
     }

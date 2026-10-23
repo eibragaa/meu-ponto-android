@@ -23,6 +23,7 @@ internal data class UpdateUiState(
     val available: AppUpdateInfo? = null,
     val bannerVersion: String? = null,
     val bannerSummary: String? = null,
+    val bannerIsFeature: Boolean = false,
     val isPromptVisible: Boolean = false,
     val isChecking: Boolean = false,
     val manualMessage: String? = null,
@@ -104,7 +105,7 @@ internal class UpdateCoordinator(
         if (!version.isNullOrBlank()) {
             preferences.dismissVersion(version)
         }
-        _state.update { it.copy(bannerVersion = null, bannerSummary = null) }
+        _state.update { it.copy(bannerVersion = null, bannerSummary = null, bannerIsFeature = false) }
     }
 
     /**
@@ -165,6 +166,7 @@ internal class UpdateCoordinator(
                         available = null,
                         bannerVersion = null,
                         bannerSummary = null,
+                        bannerIsFeature = false,
                         isPromptVisible = false,
                         manualMessage = if (manual) {
                             "Você já está na versão mais recente (v$currentVersion)."
@@ -179,11 +181,13 @@ internal class UpdateCoordinator(
 
     private fun applyAvailable(info: AppUpdateInfo) {
         val showBanner = shouldShowBanner(info.versionName, preferences.dismissedVersion())
+        val summary = summarizeReleaseForBanner(info.releaseNotes)
         _state.update { current ->
             current.copy(
                 available = info,
                 bannerVersion = if (showBanner) info.versionName else null,
-                bannerSummary = if (showBanner) summarizeReleaseNotes(info.releaseNotes) else null,
+                bannerSummary = if (showBanner) summary.text else null,
+                bannerIsFeature = showBanner && summary.isFeature,
                 isPromptVisible = true,
                 manualMessage = null
             )

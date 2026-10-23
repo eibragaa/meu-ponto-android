@@ -89,6 +89,7 @@ class UpdateCoordinatorTest {
         assertTrue(state.isPromptVisible)
         assertEquals(update.versionName, state.bannerVersion)
         assertEquals("Correções e melhorias", state.bannerSummary)
+        assertFalse(state.bannerIsFeature)
         assertFalse(state.isChecking)
     }
 

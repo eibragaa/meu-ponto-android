@@ -126,8 +126,18 @@ internal fun failureForHttpStatus(status: Int): UpdateFailure = when (status) {
 /** `true` quando o GitHub respondeu que não há release publicada (HTTP 404). */
 internal fun isReleaseMissingStatus(status: Int): Boolean = status == HTTP_NOT_FOUND
 
+/**
+ * Resumo pronto para o banner: destaca novidades e resume correções/melhorias.
+ *
+ * [text] é o conteúdo principal; [isFeature] indica se ele veio de uma seção de novidades e merece
+ * o rótulo "Novidades" na UI.
+ */
+internal data class BannerSummary(val text: String, val isFeature: Boolean)
+
 /** Linha candidata a resumo; [isBullet] prioriza itens de correção/novidade sobre texto solto. */
 private data class SummaryCandidate(val text: String, val isBullet: Boolean)
+
+private enum class ReleaseSection { NONE, FEATURES, FIXES, OTHER }
 
 /** Nome/versão do release usado como título solto nas notas (ex.: `Meu Ponto v0.5.1`). */
 private val RELEASE_NAME_LINE = Regex(
@@ -141,6 +151,9 @@ private val RELEASE_NAME_LINE = Regex(
  * A comparação é sem acento e sem diferenciar maiúsculas para aceitar "Correções" e "Correcoes".
  */
 private val KNOWN_SECTION_HEADERS = setOf("correcoes", "novidades", "interno", "observacoes")
+private val FEATURE_HEADER_KEYS = setOf("novidade", "feature", "destaque", "novo")
+private val FIX_HEADER_KEYS = setOf("correcao", "correcoes", "melhoria", "ajuste")
+
 
 private val BULLET_PREFIX = Regex("""^(?:[-*+•]|\d+[.)])\s+""")
 private val DIACRITICS = Regex("\\p{Mn}+")
@@ -162,9 +175,76 @@ internal fun summarizeReleaseNotes(notes: String, maxChars: Int = 120): String {
         ?: candidates.firstOrNull()?.text
         ?: return ""
 
-    if (summary.length <= maxChars) return summary
+    return truncateSummary(summary, maxChars)
+}
+
+/**
+ * Extrai o resumo do banner priorizando a seção de novidades.
+ *
+ * Se houver uma seção "Novidades"/"Features"/"Destaques", usa até dois itens dela. Se houver apenas
+ * correções/melhorias, devolve o texto genérico "Correções e melhorias" para não poluir o banner com
+ * detalhes técnicos. Sem seções reconhecidas, cai no resumo simples da primeira linha útil.
+ */
+internal fun summarizeReleaseForBanner(notes: String, maxChars: Int = 140): BannerSummary {
+    if (maxChars <= 0) return BannerSummary("", false)
+
+    val features = mutableListOf<String>()
+    var section = ReleaseSection.NONE
+    var hasHeader = false
+    var hasFixSection = false
+
+    notes.lineSequence().forEach { rawLine ->
+        val trimmed = rawLine.trim()
+        if (trimmed.isBlank()) return@forEach
+
+        val header = sectionHeaderText(trimmed)
+        if (header != null) {
+            hasHeader = true
+            val normalized = stripDiacritics(header).lowercase()
+            section = when {
+                FEATURE_HEADER_KEYS.any { normalized.contains(it) } -> ReleaseSection.FEATURES
+                FIX_HEADER_KEYS.any { normalized.contains(it) } -> {
+                    hasFixSection = true
+                    ReleaseSection.FIXES
+                }
+                normalized in KNOWN_SECTION_HEADERS -> ReleaseSection.OTHER
+                else -> ReleaseSection.OTHER
+            }
+            return@forEach
+        }
+
+        if (section == ReleaseSection.FEATURES) {
+            val text = stripBasicMarkdown(trimmed)
+            if (text.isNotBlank() && !RELEASE_NAME_LINE.matches(text)) {
+                features += text
+            }
+        }
+    }
+
+    if (features.isNotEmpty()) {
+        return BannerSummary(
+            text = truncateSummary(features.take(2).joinToString(" · "), maxChars),
+            isFeature = true
+        )
+    }
+
+    if (hasHeader && hasFixSection) {
+        return BannerSummary("Correções e melhorias", false)
+    }
+
+    return BannerSummary(summarizeReleaseNotes(notes, maxChars), false)
+}
+
+private fun sectionHeaderText(rawLine: String): String? {
+    if (rawLine.startsWith("#")) return stripBasicMarkdown(rawLine)
+    val text = stripBasicMarkdown(rawLine)
+    return text.takeIf { isKnownSectionHeader(it) }
+}
+
+private fun truncateSummary(text: String, maxChars: Int): String {
+    if (text.length <= maxChars) return text
     if (maxChars == 1) return "…"
-    return summary.take(maxChars - 1).trimEnd() + "…"
+    return text.take(maxChars - 1).trimEnd() + "…"
 }
 
 private fun summaryCandidate(rawLine: String): SummaryCandidate? {
