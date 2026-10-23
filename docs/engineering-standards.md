@@ -272,6 +272,17 @@ versão/tag/release só com autorização explícita do dono do projeto.
 | ENG-6 | `EditReceiptSheet` (177 linhas) → estado + validação próprios | `MainActivity.kt` | próximo passo natural, depois de ENG-1/ENG-2 |
 | P15 | CI: `setup-java` v4 → v5, `ubuntu-latest` fixo | `.github/workflows` | avisos de depreciação, sem quebra hoje |
 | P17 | Avisar assinatura diferente antes do instalador | `updater/` | precisa de teste com APK de outra chave |
+| ENG-7 | Workflow falha em execução manual: `GITHUB_REF_NAME` com `/` (nome de branch) quebra o `cp` do APK **depois** de testes, lint e builds passarem | `.github/workflows/android-release.yml`, passo "Give APK a product filename" | correção de 1 linha (abaixo), mas exige token com escopo `workflow` para dar push |
+
+### Correção sugerida para ENG-7
+
+```yaml
+      - name: Give APK a product filename
+        shell: bash
+        run: |
+          ref="${GITHUB_REF_NAME//\//-}"   # em workflow_dispatch o ref é o nome da branch
+          cp app/build/outputs/apk/github/release/app-github-release.apk "app/build/outputs/apk/github/release/Meu-Ponto-${ref}.apk"
+```
 
 **Pendências de produto/pipeline** (ver `docs/status-e-proximos-passos.md`): classificação dos
 comprovantes de turno noturno no aparelho, publicação da `v0.5.1` e Play App Signing.
