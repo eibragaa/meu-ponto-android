@@ -1,0 +1,194 @@
+package br.com.jean.meuponto.updater
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class UpdateParserTest {
+
+    private val releaseUrl =
+        "https://github.com/eibragaa/meu-ponto-android/releases/tag/v0.5.2"
+
+    private fun apk(
+        name: String = "Meu-Ponto-0.5.2.apk",
+        url: String = "https://example.com/$name",
+        size: Long = 1024L
+    ) = ApkAsset(name = name, downloadUrl = url, size = size)
+
+    private fun release(
+        tag: String = "v0.5.2",
+        name: String = "Meu Ponto 0.5.2",
+        body: String = "Correções e melhorias",
+        assets: List<ApkAsset> = listOf(apk())
+    ) = ReleasePayload(
+        tag = tag,
+        name = name,
+        body = body,
+        releaseUrl = releaseUrl,
+        assets = assets
+    )
+
+    @Test
+    fun `release com apk mais nova devolve versao notas e url`() {
+        val result = evaluateRelease(release(), currentVersion = "0.5.1")
+
+        assertTrue(result is UpdateCheckResult.Available)
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals("0.5.2", info.versionName)
+        assertEquals("Meu Ponto 0.5.2", info.releaseName)
+        assertEquals("Correções e melhorias", info.releaseNotes)
+        assertEquals("https://example.com/Meu-Ponto-0.5.2.apk", info.apkUrl)
+        assertEquals("Meu-Ponto-0.5.2.apk", info.apkFileName)
+        assertEquals(1024L, info.apkSize)
+        assertEquals(releaseUrl, info.releaseUrl)
+    }
+
+    @Test
+    fun `prefere apk com nome do produto entre varios assets`() {
+        val assets = listOf(
+            apk(name = "app-release.apk", url = "https://example.com/app-release.apk"),
+            apk(name = "Meu-Ponto-0.5.2.apk", url = "https://example.com/Meu-Ponto-0.5.2.apk")
+        )
+
+        val result = evaluateRelease(release(assets = assets), currentVersion = "0.5.1")
+
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals("Meu-Ponto-0.5.2.apk", info.apkFileName)
+    }
+
+    @Test
+    fun `sem nome do produto usa o primeiro apk com url`() {
+        val assets = listOf(
+            ApkAsset(name = "notas.txt", downloadUrl = "https://example.com/notas.txt", size = 10L),
+            apk(name = "app-release.apk", url = "https://example.com/app-release.apk"),
+            apk(name = "outro.apk", url = "https://example.com/outro.apk")
+        )
+
+        val result = evaluateRelease(release(assets = assets), currentVersion = "0.5.1")
+
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals("app-release.apk", info.apkFileName)
+    }
+
+    @Test
+    fun `release sem apk devolve no apk`() {
+        val assets = listOf(
+            ApkAsset(name = "notas.txt", downloadUrl = "https://example.com/notas.txt", size = 10L),
+            apk(name = "sem-url.apk", url = "")
+        )
+
+        val result = evaluateRelease(release(assets = assets), currentVersion = "0.5.1")
+
+        assertEquals(UpdateCheckResult.Failed(UpdateFailure.NO_APK), result)
+    }
+
+    @Test
+    fun `release sem assets devolve no apk`() {
+        val result = evaluateRelease(release(assets = emptyList()), currentVersion = "0.5.1")
+
+        assertEquals(UpdateCheckResult.Failed(UpdateFailure.NO_APK), result)
+    }
+
+    @Test
+    fun `versao igual ou menor devolve up to date`() {
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateRelease(release(tag = "v0.5.1"), currentVersion = "0.5.1")
+        )
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateRelease(release(tag = "v0.5.0"), currentVersion = "0.5.1")
+        )
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateRelease(release(tag = "v0.5.1", assets = emptyList()), currentVersion = "0.5.1")
+        )
+    }
+
+    @Test
+    fun `versao maior devolve available mesmo com tag sem v`() {
+        val result = evaluateRelease(release(tag = "0.5.2"), currentVersion = "0.5.1")
+
+        assertTrue(result is UpdateCheckResult.Available)
+        assertEquals("0.5.2", (result as UpdateCheckResult.Available).info.versionName)
+    }
+
+    @Test
+    fun `tag vazia devolve resposta invalida`() {
+        val result = evaluateRelease(release(tag = "v"), currentVersion = "0.5.1")
+
+        assertEquals(UpdateCheckResult.Failed(UpdateFailure.INVALID_RESPONSE), result)
+    }
+
+    @Test
+    fun `corpo vazio mantem available sem notas`() {
+        val result = evaluateRelease(
+            release(body = "", name = ""),
+            currentVersion = "0.5.1"
+        )
+
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals("", info.releaseNotes)
+        assertEquals("Versão 0.5.2", info.releaseName)
+    }
+
+    @Test
+    fun `notas acima do limite sao truncadas`() {
+        val body = "x".repeat(MAX_RELEASE_NOTES_CHARS + 50)
+
+        val result = evaluateRelease(release(body = body), currentVersion = "0.5.1")
+
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals(MAX_RELEASE_NOTES_CHARS, info.releaseNotes.length)
+    }
+
+    @Test
+    fun `mapeia status http para falha tipada`() {
+        listOf(401, 403, 429).forEach { status ->
+            assertEquals(UpdateFailure.RATE_LIMITED, failureForHttpStatus(status))
+        }
+        listOf(500, 502, 503, 599).forEach { status ->
+            assertEquals(UpdateFailure.SERVER_ERROR, failureForHttpStatus(status))
+        }
+        listOf(400, 418, 302).forEach { status ->
+            assertEquals(UpdateFailure.SERVER_ERROR, failureForHttpStatus(status))
+        }
+    }
+
+    @Test
+    fun `reconhece 404 como release inexistente`() {
+        assertTrue(isReleaseMissingStatus(404))
+        assertFalse(isReleaseMissingStatus(200))
+        assertFalse(isReleaseMissingStatus(500))
+    }
+
+    @Test
+    fun `resume notas usando a primeira linha util sem markdown`() {
+        val notes = "\n\n## Correções\n- item importante"
+
+        assertEquals("Correções", summarizeReleaseNotes(notes))
+    }
+
+    @Test
+    fun `resume remove marcadores de lista e negrito`() {
+        assertEquals("Item importante", summarizeReleaseNotes("- **Item importante**"))
+        assertEquals("Aviso", summarizeReleaseNotes("* Aviso"))
+        assertEquals("Correções importantes", summarizeReleaseNotes("Correções **importantes**"))
+    }
+
+    @Test
+    fun `resume trunca com reticencias`() {
+        val summary = summarizeReleaseNotes("Correções e melhorias importantes", maxChars = 10)
+
+        assertEquals(10, summary.length)
+        assertTrue(summary.endsWith("…"))
+    }
+
+    @Test
+    fun `resume devolve vazio para notas em branco`() {
+        assertEquals("", summarizeReleaseNotes(""))
+        assertEquals("", summarizeReleaseNotes("\n \n"))
+        assertEquals("", summarizeReleaseNotes("texto", maxChars = 0))
+    }
+}

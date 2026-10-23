@@ -153,7 +153,9 @@ import br.com.jean.meuponto.ui.punchModes
 import br.com.jean.meuponto.updater.AboutSheet
 import br.com.jean.meuponto.updater.AppUpdateInfo
 import br.com.jean.meuponto.updater.AppUpdater
+import br.com.jean.meuponto.updater.UpdateCheckResult
 import br.com.jean.meuponto.updater.UpdateDialog
+import br.com.jean.meuponto.updater.updateFailureMessage
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -273,10 +275,12 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         cleanupUpdateAndPdfCaches(context)
         if (updaterEnabled && !hasCheckedAutoUpdate) {
             hasCheckedAutoUpdate = true
-            val update = AppUpdater.checkForUpdates(currentVersion).getOrNull()
-            if (update != null) {
-                availableUpdate = update
-                showUpdateDialog = true
+            when (val result = AppUpdater.checkForUpdates(currentVersion)) {
+                is UpdateCheckResult.Available -> {
+                    availableUpdate = result.info
+                    showUpdateDialog = true
+                }
+                is UpdateCheckResult.Failed, UpdateCheckResult.UpToDate -> Unit
             }
         }
     }
@@ -317,13 +321,15 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             isCheckingUpdatesManually = true
             val result = AppUpdater.checkForUpdates(currentVersion)
             isCheckingUpdatesManually = false
-            val update = result.getOrNull()
-            if (update != null) {
-                availableUpdate = update
-                showAboutSheet = false
-                showUpdateDialog = true
-            } else {
-                showMessage("Você já está na versão mais recente (v$currentVersion).")
+            when (result) {
+                is UpdateCheckResult.Available -> {
+                    availableUpdate = result.info
+                    showAboutSheet = false
+                    showUpdateDialog = true
+                }
+                is UpdateCheckResult.Failed -> showMessage(updateFailureMessage(result.reason))
+                UpdateCheckResult.UpToDate ->
+                    showMessage("Você já está na versão mais recente (v$currentVersion).")
             }
         }
     }
