@@ -60,6 +60,13 @@ import br.com.jean.meuponto.domain.formatMinutes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Visualizador de um comprovante em tela cheia, com zoom/arrasto e navegação entre registros.
+ *
+ * A imagem é carregada em `produceState` com amostragem reduzida: nunca decodifica o arquivo em
+ * tamanho total, o que estouraria a memória em fotos de scanner. Ações de editar, compartilhar e
+ * excluir são apenas repassadas por callback — quem decide é a tela principal.
+ */
 @Composable
 fun ReceiptViewer(
     receipt: Receipt,

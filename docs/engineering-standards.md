@@ -102,13 +102,13 @@ Regra de dependência (permitido → proibido):
 
 Situação atual (baseline de 22/10/2026, para não regredir) — medido por chaves, não por linha:
 
-- `MainActivity.kt`: **1.568 LOC** (era 2.152 antes da extração). Ainda é o maior arquivo do repo.
+- `MainActivity.kt`: **1.567 LOC** (era 2.152 antes da extração). Ainda é o maior arquivo do repo.
 - Funções acima do limite duro (80 linhas), do maior para o menor:
   `MeuPontoApp` **504**, `UpdateDialog` 266, `PayrollSettingsSheet` 183, `EditReceiptSheet` 176,
   `AboutSheet` 162, `ReceiptViewer` 152, `SummaryCard` 109, `restoreBackup` 93,
   `InsightsSheet` 93, `ReceiptCard` 81.
 - Mediana das 64 funções: **18,5 linhas** — a maioria está saudável; o problema é concentrado.
-- Produção: 4.435 LOC em 19 arquivos. Testes: 311 LOC, 22 testes, todos em JVM.
+- Produção: 4.435 LOC em 19 arquivos. Testes: 440 LOC, **35 testes** em 4 arquivos, todos em JVM.
 
 **Regra do escoteiro**: ao tocar em algo grande, extraia uma peça para o lugar certo (seção 2) e
 deixe o arquivo menor. Não é obrigatório refatorar tudo de uma vez; é obrigatório não piorar.
