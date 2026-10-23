@@ -149,7 +149,7 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - Release publicada como **Latest**, com `Meu-Ponto-v0.6.3.apk` e `app-play-release.aab`.
 - **Pendente:** QA manual do gesto, confirmação, seleção, TalkBack e agrupamentos no aparelho.
 
-### 1.19 Revisão guiada: ocorrências, ordem da batida e exclusão (23/10/2026, não publicado)
+### 1.19 Revisão guiada: ocorrências, ordem da batida e exclusão (publicado na v0.6.4, 23/10/2026)
 - Modelo: `Receipt.occurrence` (`DayOccurrence`: esquecimento, falta, folga, atestado). Room v3 com
   `MIGRATION_2_3` (coluna nula, sem mudar registros antigos). Backup ZIP grava e lê o campo.
 - Pareamento: comprovante com ocorrência sai do pareamento e não soma horas. Falta, folga e atestado
@@ -163,8 +163,11 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - Exclusão: swipe com fundo do tema (`errorContainer`), círculo de ação e vibração ao armar. Diálogo de
   confirmação mostra data e horários do comprovante antes de apagar.
 - Testes novos: `DayOccurrenceTest`, `PunchChoiceTest`, `ReceiptLabelsTest`.
-- **Pendente antes de publicar:** rodar testes e lint no CI (este ambiente não tem Android SDK); gerar e
-  commitar `app/schemas/.../3.json` no build; QA no aparelho (editor, migração de dados reais, swipe).
+- **CI:** `132` testes e lint verdes no `android-release.yml`; release `v0.6.4` publicada (APK + AAB).
+- **Pendente:** gerar e commitar `app/schemas/.../3.json` (exige build com Android SDK ou escopo
+  `workflow` no `gh` para subir o schema como artefato); QA no aparelho (editor, migração de dados
+  reais, swipe). Se o CI falhar em KSP com `Empty schema file` ou daemon encerrado, limpar os caches
+  do Actions (`gh cache delete --all`) antes de repetir: cache salvo após crash do daemon reproduz o erro.
 - **Decisão pendente:** falta, folga e atestado hoje contam como dia trabalhado com 0h na média e no
   saldo esperado. Confirmar se devem ser neutros no saldo (e se atestado é pago).
 
@@ -180,9 +183,9 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 | Backup automático do Android | Desativado (`allowBackup=false` + regras) |
 | Backup do app (ZIP, AES-GCM com senha) | Implementado (PBKDF2 com 120k iterações) |
 | Restore | Implementado, com checagem de duplicata por `capturedAt` |
-| Room | v2, schema exportado. Migração 1→2 sem teste automatizado |
+| Room | v3, schema exportado. Migrações 1→2 e 2→3 sem teste automatizado |
 | R8 em release | Ativado, sem regras extras. Testado só no WSA (fluxo completo não rodado) |
-| Testes unitários | 108 testes em 10 arquivos, incluindo updater/parser/coordinator/checksum e motivos de revisão do dia. Backup/PDF/DAO ainda sem teste |
+| Testes unitários | 132 testes em 13 arquivos, incluindo updater/parser/coordinator/checksum e motivos de revisão do dia. Backup/PDF/DAO ainda sem teste |
 | Strings | Hardcoded em pt-BR. Sem `strings.xml` |
 | Arquitetura | `MainActivity.kt` + camadas `domain/`, `data/`, `ui/`, `updater/` com `UpdateCoordinator`. Sem ViewModel nem Repository |
 | Padrão de engenharia | [`engineering-standards.md`](engineering-standards.md) + [`AGENTS.md`](../AGENTS.md). Pendências `ENG-1` a `ENG-6` |
