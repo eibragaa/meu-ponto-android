@@ -41,11 +41,11 @@ Ou seja: a base está pronta. A feature é evoluir isso para um fluxo confiável
 1. A tela inicial aparece normalmente; a verificação roda em background.
 2. Se houver versão nova:
    - mostrar um **banner compacto** no topo da lista;
-   - na primeira vez que aquela versão for vista, abrir também o diálogo de novidades.
+   - abrir também o diálogo de novidades a cada abertura/verificação que encontrar a versão nova.
 3. Se o usuário tocar em “Depois”:
    - fecha o diálogo;
    - o banner continua visível;
-   - o modal não volta para a mesma versão.
+   - a próxima abertura/verificação pode mostrar o modal de novo.
 4. Se o usuário tocar em “Dispensar” no banner:
    - o banner some para aquela versão;
    - a verificação manual na tela Sobre continua disponível.
@@ -90,7 +90,7 @@ Na primeira abertura da versão nova:
 
 - mostrar uma folha “O que há de novo na vX.Y.Z” com as notas que já foram baixadas;
 - botão “Começar a usar”;
-- mostrar **uma vez por versão** e limpar o estado depois.
+- mostrar **uma vez após a instalação** e limpar o estado depois.
 
 Se o usuário instalou o APK por fora do app, não há notas pendentes: nesse caso, não mostrar nada
 (ou buscar `/releases/tags/vX` em uma fase futura).
@@ -161,7 +161,6 @@ Assim o parser vira testável sem `HttpURLConnection` e sem Android.
 | Chave | Uso |
 |---|---|
 | `last_check_at` | throttle entre verificações |
-| `last_prompted_version` | evita reabrir o modal para a mesma versão |
 | `dismissed_version` | esconde o banner daquela versão |
 | `pending_notes_version` | versão cujas notas serão mostradas após instalar |
 | `pending_notes` | notas salvas antes de abrir o instalador |
@@ -176,10 +175,6 @@ object UpdatePolicy {
         lastCheckAt: Long
     ): Boolean
 
-    fun shouldShowPrompt(
-        version: String,
-        lastPromptedVersion: String?
-    ): Boolean
 }
 ```
 
@@ -221,8 +216,8 @@ checkForUpdates() ──► UpToDate ──► nada
         ▼
     Available
         │
-        ├─ banner sempre
-        └─ modal só se versão ainda não foi mostrada
+        ├─ banner sempre (se não dispensado)
+        └─ modal a cada verificação com atualização
                 │
                 ▼
         “Atualizar agora” ──► download ──► salva notas pendentes ──► instalador
@@ -284,7 +279,7 @@ dá histórico versionado e evita texto automático.
   - foreground dentro do intervalo não verifica;
   - foreground depois do intervalo verifica;
   - manual ignora intervalo;
-  - modal não repete para a mesma versão;
+  - modal reabre em uma nova verificação/abertura;
   - banner dispensado não volta para a mesma versão.
 - `UpdateParserTest`
   - release com APK `Meu-Ponto-*.apk`;
@@ -300,8 +295,8 @@ dá histórico versionado e evita texto automático.
 ### 9.2 Manual no aparelho
 
 - [ ] Abrir o app sem rede: não travar, não mostrar erro automático.
-- [ ] Abrir com rede e versão nova: banner + modal uma vez.
-- [ ] Tocar “Depois”: banner permanece, modal não reabre.
+- [ ] Abrir com rede e versão nova: banner + modal.
+- [ ] Tocar “Depois”: banner permanece; a próxima abertura/verificação pode reabrir o modal.
 - [ ] Dispensar banner: some para aquela versão.
 - [ ] Verificação manual com erro: mensagem específica.
 - [ ] Baixar, instalar e reabrir: “O que há de novo” uma vez.
@@ -316,7 +311,7 @@ dá histórico versionado e evita texto automático.
 | 0 | Confirmar UX e política de release notes | P |
 | 1 | Separar parser, `UpdateCheckResult` e erros tipados + testes | M |
 | 2 | `UpdatePreferences` + `UpdatePolicy` + testes | P |
-| 3 | `UpdateCoordinator`, lifecycle, banner e modal uma vez por versão | M |
+| 3 | `UpdateCoordinator`, lifecycle, banner e modal por abertura | M |
 | 4 | “O que há de novo” após atualizar | P |
 | 5 | Hardening: rate limit/ETag, assinatura/checksum, mensagens de erro | M |
 | 6 | QA no aparelho, docs e release | P |
@@ -329,7 +324,7 @@ para depois.
 
 - [ ] Abrir o flavor `github` com versão nova disponível mostra o aviso sem bloquear a tela.
 - [ ] O aviso mostra versão atual, versão nova e notas legíveis.
-- [ ] O modal aparece no máximo uma vez por versão; o banner continua acessível.
+- [ ] O modal aparece em cada abertura/verificação com atualização; o banner continua acessível.
 - [ ] Sem atualização, o fluxo automático não incomoda.
 - [ ] Erro de rede não é confundido com “versão mais recente”.
 - [ ] A verificação manual sempre mostra o resultado real.
@@ -340,10 +335,10 @@ para depois.
 
 ## 12. Decisões para confirmar
 
-1. **Aviso:** banner + modal uma vez por versão (recomendado) ou modal em toda abertura?
+1. **Aviso:** confirmado — modal em toda abertura/verificação com atualização; banner só quando há atualização disponível.
 2. **Frequência:** abertura fria sempre + volta do background após 30 min (recomendado), ou toda
    volta ao foreground?
-3. **Pós-atualização:** mostrar “O que há de novo” uma vez (recomendado) ou não?
+3. **Pós-atualização:** confirmado — mostrar “O que há de novo” uma vez após instalar.
 4. **Dispensar:** “Depois” mantém o banner e “Dispensar” esconde só aquela versão (recomendado)?
 5. **Notas:** corpo do release curado manualmente (recomendado) ou notas automáticas do GitHub?
 6. **Play:** manter o flavor `play` sem updater por enquanto (recomendado) ou implementar a
