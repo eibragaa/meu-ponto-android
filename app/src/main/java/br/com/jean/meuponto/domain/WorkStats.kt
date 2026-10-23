@@ -341,7 +341,7 @@ object WorkStatsCalculator {
                 typedPunch.kind == PunchKind.EXIT && unknown.at.isBefore(typedPunch.at) -> PunchKind.ENTRY
                 else -> null
             }
-            if (inferred != null) {
+            if (inferred != null && unknown != null) {
                 resolvedUntyped += unknown.copy(kind = inferred)
             } else {
                 untypedOfDay.forEach { report(it.key, DayIssue.UNTYPED_PUNCH) }
