@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.sp
  * Tema, tokens de cor e tipografia do app.
  */
 
+// Tokens da identidade visual. São a única fonte de cor do app: um composable deve usar estes
+// valores ou MaterialTheme.colorScheme, nunca um hex solto (ver docs/engineering-standards.md).
 internal val Ink = Color(0xFF112032)
 internal val InkSoft = Color(0xFF304052)
 internal val Teal = Color(0xFF157C70)
@@ -25,6 +27,10 @@ internal val Mist = Color(0xFFE9EFEC)
 internal val Line = Color(0xFFD6E0DB)
 internal val Muted = Color(0xFF6B7773)
 
+/**
+ * Escala tipográfica do app: uma fonte só (sans-serif do sistema) e tamanhos fixos por papel,
+ * para que o MaterialTheme aplique a mesma hierarquia em todas as telas.
+ */
 private val AppTypography = androidx.compose.material3.Typography(
     displaySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 40.sp, letterSpacing = (-0.5).sp),
     headlineSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 32.sp),
@@ -39,6 +45,13 @@ private val AppTypography = androidx.compose.material3.Typography(
 )
 
 @Composable
+/**
+ * Tema do app. Os esquemas claro/escuro são nomeados por papel do Material 3; a marca (teal/coral)
+ * aparece em `primary`/`secondary` e as superfícies vêm dos tokens acima.
+ *
+ * [darkTheme] é decidido pelo usuário (persistido em preferências) e cai no tema do sistema na
+ * primeira execução.
+ */
 internal fun MeuPontoTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (darkTheme) {

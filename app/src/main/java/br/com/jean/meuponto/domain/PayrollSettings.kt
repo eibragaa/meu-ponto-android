@@ -3,6 +3,12 @@ package br.com.jean.meuponto.domain
 import android.content.Context
 import java.time.LocalDate
 
+/**
+ * Configuração do período de folha e da jornada esperada.
+ *
+ * Tudo é opcional: sem configuração, o app assume o mês corrente ([effectiveStart]/[effectiveEnd])
+ * e nenhuma jornada diária esperada. [daysOff] existe para não contar feriado/folga como falta.
+ */
 data class PayrollSettings(
     val periodStart: LocalDate? = null,
     val periodEnd: LocalDate? = null,

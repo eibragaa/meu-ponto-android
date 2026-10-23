@@ -18,6 +18,12 @@ import kotlinx.coroutines.withContext
  * Importação de comprovante: cópia para armazenamento privado e OCR local (ML Kit).
  */
 
+/**
+ * Copia a imagem escolhida para `filesDir/receipts` com nome próprio.
+ *
+ * O app nunca guarda a `Uri` original porque permissões de SAF expiram; o nome é baseado em
+ * `currentTimeMillis` e não no nome de origem (que pode vir com path traversal).
+ */
 internal fun copyToPrivateStorage(context: Context, uri: Uri): File {
     val dir = File(context.filesDir, "receipts").apply { mkdirs() }
     val file = File(dir, "comprovante_${System.currentTimeMillis()}.jpg")
@@ -25,6 +31,17 @@ internal fun copyToPrivateStorage(context: Context, uri: Uri): File {
     return file
 }
 
+/**
+ * Roda o OCR local (ML Kit, sem rede) sobre a imagem e grava o comprovante.
+ *
+ * Heurística de extração, deliberadamente simples:
+ * - data: primeira ocorrência de `dd/MM/yyyy` (ou `dd.MM.yyyy`/`dd-MM-yyyy`) válida;
+ * - horários: todas as ocorrências de `HH:mm` válidas, em ordem de leitura; a primeira vira entrada
+ *   e a segunda saída (o comprovante de ponto lista entrada antes de saída).
+ *
+ * O que não for reconhecido fica em branco e `needsReview = true`, para o usuário corrigir na UI.
+ * A mensagem devolvida é o texto do snackbar — por isso descreve o que faltou, não "erro".
+ */
 internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: File): String {
     val text = withContext(Dispatchers.IO) {
         val image = InputImage.fromFilePath(context, Uri.fromFile(file))
@@ -65,6 +82,7 @@ internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: F
     }
 }
 
+/** Miniatura para a lista: reduz por 4 na decodificação, o suficiente para 56dp sem estourar memória. */
 internal fun decodePreview(path: String): Bitmap? {
     val options = BitmapFactory.Options().apply { inSampleSize = 4 }
     return BitmapFactory.decodeFile(path, options)

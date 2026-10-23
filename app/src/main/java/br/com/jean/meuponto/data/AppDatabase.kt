@@ -7,6 +7,12 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+/**
+ * Banco local (Room) com uma única tabela de comprovantes.
+ *
+ * `exportSchema = true` mantém `app/schemas/` versionado no git: toda mudança de entidade precisa
+ * de migration escrita à mão **e** do schema novo commitado, senão o app quebra no update.
+ */
 @Database(entities = [Receipt::class], version = 2, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
@@ -14,6 +20,8 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
 
+        // v1 tinha só data/hora única. v2 separa entrada e saída e adiciona o marcador de revisão;
+        // as colunas são anuláveis para não perder registros antigos.
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE receipts ADD COLUMN entryTime TEXT")

@@ -1,6 +1,7 @@
 package br.com.jean.meuponto.ui
 
 import br.com.jean.meuponto.data.Receipt
+import br.com.jean.meuponto.domain.REVIEW_DATE_KEY
 import br.com.jean.meuponto.domain.WorkDayStats
 
 /**
@@ -48,6 +49,12 @@ internal data class MonthSection(
     val minutes: Int
 )
 
+/**
+ * Converte a lista plana de comprovantes em seções mês -> dia para a lista da tela inicial.
+ *
+ * Ordenação: o grupo de data desconhecida ([REVIEW_DATE_KEY]) vem primeiro, para o usuário ver o
+ * que precisa corrigir; o resto em ordem decrescente (mais recente no topo).
+ */
 internal fun buildMonthSections(
     receipts: List<Receipt>,
     dayStats: Map<String, WorkDayStats>
@@ -56,7 +63,7 @@ internal fun buildMonthSections(
         .groupBy { monthKey(it.workDate) }
         .map { (key, items) ->
             val days = items
-                .groupBy { it.workDate.ifBlank { "revisar" } }
+                .groupBy { it.workDate.ifBlank { REVIEW_DATE_KEY } }
                 .map { (dayKey, dayReceipts) ->
                     val dayStat = dayStats[dayKey]
                     DaySection(
@@ -69,7 +76,7 @@ internal fun buildMonthSections(
                     )
                 }
                 .sortedWith(
-                    compareBy<DaySection> { if (it.key == "revisar") 0 else 1 }
+                    compareBy<DaySection> { if (it.key == REVIEW_DATE_KEY) 0 else 1 }
                         .thenByDescending { it.key }
                 )
             MonthSection(
@@ -81,11 +88,16 @@ internal fun buildMonthSections(
             )
         }
         .sortedWith(
-            compareBy<MonthSection> { if (it.key == "revisar") 0 else 1 }
+            compareBy<MonthSection> { if (it.key == REVIEW_DATE_KEY) 0 else 1 }
                 .thenByDescending { it.key }
         )
 }
 
+/**
+ * Agrupa comprovantes por dia, semana ou lista única, conforme o modo escolhido em "Organizar".
+ *
+ * `mode` é texto porque vem direto dos chips da UI; qualquer valor desconhecido cai em lista única.
+ */
 internal fun groupReceipts(receipts: List<Receipt>, mode: String): List<ReceiptGroup> {
     if (mode == "none") return listOf(ReceiptGroup("", receipts))
     return receipts.groupBy { receipt ->

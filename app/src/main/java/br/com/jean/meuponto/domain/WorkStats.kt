@@ -35,6 +35,22 @@ data class PeriodStats(
     val days: Map<String, WorkDayStats>
 )
 
+/**
+ * Chave usada no lugar da data quando o OCR não identificou a data do comprovante.
+ * Mantida como texto porque é a chave de agrupamento usada na UI e no banco.
+ */
+const val REVIEW_DATE_KEY = "revisar"
+
+/**
+ * Regras de jornada do app: pareamento de batidas, horas por dia e resumo do período.
+ *
+ * Regra central (ver [pairPunches]): entrada e saída podem vir em comprovantes diferentes, inclusive
+ * em dias diferentes (turno noturno). O pareamento é cronológico e uma entrada só é pareada com a
+ * primeira saída posterior dentro de [MAX_SHIFT_MINUTES].
+ *
+ * Datas e horários chegam como texto ("dd/MM/yyyy" e "HH:mm") do OCR ou do banco; a normalização e
+ * a validação acontecem aqui, para que a UI só receba dados já validados.
+ */
 object WorkStatsCalculator {
     private val dateFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("dd/MM/uuuu").withResolverStyle(ResolverStyle.STRICT)
@@ -64,20 +80,39 @@ object WorkStatsCalculator {
         return runCatching { LocalTime.parse(normalized, timeFormatter) }.getOrNull()
     }
 
+    /**
+     * Duração em minutos entre dois horários do **mesmo** comprovante.
+     *
+     * Saída menor que entrada significa turno que cruzou a meia-noite (soma um dia). Aplica o mesmo
+     * teto de [MAX_SHIFT_MINUTES] usado no pareamento entre comprovantes: acima disso o dado é
+     * tratado como erro de digitação/OCR e a duração fica indefinida, em vez de inflar as horas.
+     */
     fun durationMinutes(entry: String?, exit: String?): Int? {
         val entryTime = parseClockTime(entry) ?: return null
         val exitTime = parseClockTime(exit) ?: return null
-        var minutes = Duration.between(entryTime, exitTime).toMinutes().toInt()
-        if (minutes < 0) minutes += 24 * 60
-        return minutes.takeIf { it > 0 }
+        val minutes = Duration.between(entryTime, exitTime).toMinutes().toInt()
+            .let { if (it < 0) it + MINUTES_PER_DAY else it }
+        return minutes.takeIf { it in 1..MAX_SHIFT_MINUTES }
     }
 
     fun durationMinutes(receipt: Receipt): Int? =
         durationMinutes(receipt.entryTime, receipt.exitTime)
 
+    /**
+     * Horas por dia considerando todos os comprovantes recebidos.
+     *
+     * Duas origens de minutos, sem sobreposição:
+     * 1. comprovante com entrada e saída no mesmo registro -> [durationMinutes];
+     * 2. comprovante com apenas uma das batidas -> pareamento cronológico em [pairPunches], que
+     *    credita a duração no dia da *entrada* (turno noturno conta no dia em que começou).
+     *
+     * O dia fica `pending` quando alguma batida não pôde ser pareada, quando o comprovante foi
+     * marcado para revisão ([Receipt.needsReview]) ou quando a data é desconhecida
+     * ([REVIEW_DATE_KEY]).
+     */
     fun dayStats(receipts: List<Receipt>): Map<String, WorkDayStats> {
         val paired = pairPunches(receipts)
-        return receipts.groupBy { it.workDate.ifBlank { "revisar" } }.mapValues { (date, dayReceipts) ->
+        return receipts.groupBy { it.workDate.ifBlank { REVIEW_DATE_KEY } }.mapValues { (date, dayReceipts) ->
             var minutes = paired.minutesByDate[date] ?: 0
             var pending = date in paired.pendingDates || dayReceipts.any { it.needsReview }
             dayReceipts.forEach { receipt ->
@@ -182,15 +217,22 @@ object WorkStatsCalculator {
         return date.dayOfWeek != DayOfWeek.SATURDAY && date.dayOfWeek != DayOfWeek.SUNDAY
     }
 
+    /**
+     * Pareia batidas soltas (uma por comprovante) em ordem cronológica.
+     *
+     * Comprovantes que já trazem entrada e saída no mesmo registro são ignorados aqui: eles são
+     * somados por [durationMinutes] em [dayStats], o que evita contar a mesma jornada duas vezes.
+     */
     private fun pairPunches(receipts: List<Receipt>): PairResult {
         val minutesByDate = mutableMapOf<String, Int>()
         val pendingDates = mutableSetOf<String>()
         val dated = mutableListOf<Punch>()
 
         receipts.forEach { receipt ->
-            val key = receipt.workDate.ifBlank { "revisar" }
+            val key = receipt.workDate.ifBlank { REVIEW_DATE_KEY }
             val entry = parseClockTime(receipt.entryTime)
             val exit = parseClockTime(receipt.exitTime)
+            // Par completo no mesmo comprovante: contabilizado por durationMinutes, não aqui.
             if (entry != null && exit != null) return@forEach
             val date = parseWorkDate(receipt.workDate)
             val kinds = when {
@@ -213,6 +255,8 @@ object WorkStatsCalculator {
                 when (punch.kind) {
                     PunchKind.ENTRY -> open.addLast(punch)
                     PunchKind.EXIT -> {
+                        // Entrada aberta há mais de 16h é considerada esquecida: não pareia e deixa
+                        // o dia daquela entrada pendente, em vez de creditar uma jornada irreal.
                         while (open.isNotEmpty() &&
                             Duration.between(open.first().at, punch.at).toMinutes() > MAX_SHIFT_MINUTES
                         ) {
@@ -272,7 +316,10 @@ object WorkStatsCalculator {
 
     private enum class PunchKind { ENTRY, EXIT, UNKNOWN }
 
+    /** Teto de uma jornada plausível: acima disso o pareamento é recusado e o dia fica pendente. */
     private const val MAX_SHIFT_MINUTES = 16 * 60
+
+    private const val MINUTES_PER_DAY = 24 * 60
 }
 
 fun formatMinutes(minutes: Int): String {

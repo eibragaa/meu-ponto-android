@@ -51,6 +51,12 @@ object AppUpdater {
         }
     }
 
+    /**
+     * Comparação de versão tolerante ao formato usado nas tags (`v0.5.1`, `0.5.1`, `0.5.1-beta`).
+     *
+     * Cada parte é comparada numericamente e o que não é dígito é descartado; partes faltantes valem
+     * zero, então `0.5` e `0.5.0` são iguais (e não uma atualização).
+     */
     fun isNewerVersion(remoteVersion: String, currentVersion: String): Boolean {
         val remoteNumbers = remoteVersion.trim().trimStart('v', 'V')
             .split('.')
@@ -134,6 +140,13 @@ object AppUpdater {
         }
     }
 
+    /**
+     * Baixa o APK do release para `cacheDir/updates`.
+     *
+     * O GitHub responde com redirect para o CDN, por isso o laço de redirecionamento; o download vai
+     * para um `.tmp` e só vira o arquivo final ao terminar, evitando instalar APK truncado.
+     * O cache é limpo por [br.com.jean.meuponto.data.cleanupUpdateAndPdfCaches].
+     */
     suspend fun downloadApk(
         context: Context,
         apkUrl: String,

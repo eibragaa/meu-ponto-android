@@ -22,6 +22,15 @@ import java.util.Locale
  * Exportação de comprovantes em PDF para compartilhamento.
  */
 
+/**
+ * Monta um PDF (uma página por comprovante, ou página única ampliada) e abre o compartilhamento.
+ *
+ * O arquivo é escrito em `cacheDir/shared` e exposto por `FileProvider` — o app não pede permissão
+ * de armazenamento. O cache é limpo por
+ * [br.com.jean.meuponto.data.cleanupUpdateAndPdfCaches] na próxima abertura.
+ *
+ * Falhas viram um `Toast`: o usuário pediu o arquivo e precisa saber que não deu certo.
+ */
 internal fun shareAsPdf(context: Context, receipts: List<Receipt>) {
     if (receipts.isEmpty()) return
     try {
@@ -139,6 +148,7 @@ private fun fitBitmapRect(bitmap: Bitmap, left: Float, top: Float, right: Float,
     return RectF(offsetX, offsetY, offsetX + width, offsetY + height)
 }
 
+/** Decodifica a imagem reduzindo por potência de 2 até caber em ~2200px (limite do PDF A4 a 72dpi). */
 private fun decodePdfBitmap(path: String): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(path, bounds)

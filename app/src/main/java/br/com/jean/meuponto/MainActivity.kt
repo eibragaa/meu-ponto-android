@@ -175,13 +175,17 @@ import kotlinx.coroutines.withContext
 
 
 
-
-
-
-
-
-
-
+/**
+ * Tela principal do app.
+ *
+ * Responsabilidade deste arquivo: **estado da tela + composição visual**. Nenhum I/O pesado
+ * acontece aqui: OCR (`recognizeAndSave`), backup/restauração (`createBackup`/`restoreBackup`),
+ * PDF (`shareAsPdf`) e limpeza de cache (`cleanupUpdateAndPdfCaches`) ficam em `data/`;
+ * agrupamento e formatação em `ui/`; regras de jornada em `domain/`.
+ *
+ * Ordem do arquivo: raiz e tema -> estado da tela -> lista (cabeçalho, mês, dia, card) ->
+ * folhas (adicionar, backup, organizar, editor) -> utilitários de UI.
+ */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -221,6 +225,12 @@ private fun MeuPontoRoot() {
     }
 }
 
+/**
+ * Dono do estado da tela inicial: lista, filtros, folhas e ações de arquivo.
+ *
+ * O estado vive aqui (e não em um ViewModel) por decisão histórica; é a pendência P4 do padrão de
+ * engenharia. Os valores derivados usam `remember(chaves)` para não recalcular a cada recomposição.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
@@ -228,15 +238,23 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val scope = rememberCoroutineScope()
     val dao = remember { AppDatabase.get(context).receiptDao() }
     val snackbarHostState = remember { SnackbarHostState() }
+    // Busca e organização da lista: em `rememberSaveable` para sobreviver a rotação e à recriação
+    // do processo.
     var query by rememberSaveable { mutableStateOf("") }
     var selectedFilter by rememberSaveable { mutableStateOf("all") }
     var selectedGroupMode by rememberSaveable { mutableStateOf("month") }
+
+    // Uma flag por folha (bottom sheet) aberta. São mutuamente exclusivas na prática; unificá-las
+    // em um único estado selado está registrado como pendência no padrão de engenharia (P4).
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
     var showOrganizeSheet by rememberSaveable { mutableStateOf(false) }
     var showPayrollSettings by rememberSaveable { mutableStateOf(false) }
     var showInsights by rememberSaveable { mutableStateOf(false) }
     var backupPasswordDialog by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Registros em edição/exibição/exclusão: guardam o objeto inteiro para a folha não precisar
+    // reler o banco enquanto está aberta.
     var receiptBeingEdited by remember { mutableStateOf<Receipt?>(null) }
     var receiptBeingViewed by remember { mutableStateOf<Receipt?>(null) }
     var receiptPendingDelete by remember { mutableStateOf<Receipt?>(null) }
@@ -315,6 +333,10 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         }
     }
 
+    /**
+     * Importa uma imagem (câmera ou galeria) e grava o comprovante com o que o OCR reconheceu.
+     * A cópia para o storage privado roda em IO; a mensagem devolvida vira snackbar.
+     */
     fun processUri(uri: Uri) {
         scope.launch {
             isProcessing = true
@@ -333,6 +355,8 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         if (uri != null) processUri(uri)
     }
 
+    // A senha é guardada em `pendingBackupPassword` *antes* de abrir o seletor de arquivos: o
+    // launcher só devolve a Uri depois que o diálogo já foi fechado, então não dá para lê-la lá.
     val createBackupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
@@ -393,6 +417,12 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         }
     }
 
+    /**
+     * Abre o Document Scanner do ML Kit.
+     *
+     * Ele devolve um `IntentSender` que exige uma `Activity` (não serve `Context` genérico), por
+     * isso o cast; quando não há Activity ou Play Services, cai na mensagem para usar a galeria.
+     */
     fun startScanner() {
         val activity = context as? Activity
         if (activity == null) {
@@ -1333,6 +1363,19 @@ private fun BackupPasswordDialog(action: String, onDismiss: () -> Unit, onConfir
     }
 }
 
+/**
+ * Folha de edição de um comprovante.
+ *
+ * `mode` define **o que este comprovante representa**, e é a única fonte de verdade sobre o que
+ * será salvo:
+ * - `both`  -> entrada e saída no mesmo registro;
+ * - `entry` -> só a entrada (a saída virá em outro comprovante, às vezes no dia seguinte);
+ * - `exit`  -> só a saída;
+ * - `none`  -> sem horário (data apenas).
+ *
+ * Ao confirmar, só o tipo escolhido é gravado. Era o bug P19: em "Só entrada", o campo de saída
+ * (vazio ou herdado) também era salvo, gerando horas e pendências erradas.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditReceiptSheet(
@@ -1491,6 +1534,7 @@ private fun EditReceiptSheet(
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
+                        // Só persiste o horário do tipo escolhido (ver KDoc de EditReceiptSheet).
                         val keepEntry = mode == "both" || mode == "entry"
                         val keepExit = mode == "both" || mode == "exit"
                         onSave(

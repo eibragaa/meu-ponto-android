@@ -23,17 +23,30 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Backup e restauração manual (ZIP + JSON, opcionalmente cifrado com AES-GCM).
+ * Backup e restauração manual do banco de comprovantes.
+ *
+ * Formato do arquivo, na ordem: `BACKUP_MAGIC` + 1 byte de versão + salt(16) + iv(12) + payload
+ * AES-GCM. Sem senha, o arquivo é apenas o ZIP (imagens + `manifest.json`).
+ *
+ * O manifest guarda os campos da tabela `receipts`, exceto a imagem, que vai em `images/<id>.jpg`.
+ * A restauração é defensiva por natureza (arquivo vem de fora): valida número de entradas, tamanho
+ * por arquivo, path traversal e quantidade de registros antes de tocar no banco.
  */
 
-internal val BackupMagic = "MEUPONTO_BACKUP_V2".toByteArray(Charsets.US_ASCII)
-internal const val BackupVersion: Byte = 1
-internal const val BackupIterations = 120_000
-internal const val MaxRestoreZipEntries = 2_000
-internal const val MaxRestoreImageBytes = 48L * 1024L * 1024L
-internal const val MaxRestoreManifestBytes = 8L * 1024L * 1024L
-internal const val MaxRestoreManifestItems = 5_000
+internal val BACKUP_MAGIC = "MEUPONTO_BACKUP_V2".toByteArray(Charsets.US_ASCII)
+internal const val BACKUP_VERSION: Byte = 1
+internal const val BACKUP_ITERATIONS = 120_000
+internal const val MAX_RESTORE_ZIP_ENTRIES = 2_000
+internal const val MAX_RESTORE_IMAGE_BYTES = 48L * 1024L * 1024L
+internal const val MAX_RESTORE_MANIFEST_BYTES = 8L * 1024L * 1024L
+internal const val MAX_RESTORE_MANIFEST_ITEMS = 5_000
 
+/**
+ * Gera o backup em [destination] e devolve quantos comprovantes entraram no manifest.
+ *
+ * Comprovantes cujo arquivo de imagem sumiu do disco são ignorados (evita backup quebrado).
+ * O ZIP é montado em `cacheDir` e apagado no `finally`, porque o destino é um `Uri` de SAF.
+ */
 internal suspend fun createBackup(context: Context, dao: ReceiptDao, destination: Uri, password: String): Int = withContext(Dispatchers.IO) {
     val receipts = dao.getAll()
     val manifest = JSONArray()
@@ -76,6 +89,13 @@ internal suspend fun createBackup(context: Context, dao: ReceiptDao, destination
     }
 }
 
+/**
+ * Restaura um backup e devolve quantos comprovantes foram realmente inseridos.
+ *
+ * Dedupe: um comprovante é considerado já restaurado quando `capturedAt` coincide **e** os campos
+ * de data/horário/texto reconhecido também coincidem. Isso permite restaurar o mesmo backup duas
+ * vezes sem duplicar, mas ainda aceita dois comprovantes tirados no mesmo milissegundo.
+ */
 internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: Uri, password: String): Int = withContext(Dispatchers.IO) {
     val restoreDir = File(context.cacheDir, "restore_${System.currentTimeMillis()}").apply { mkdirs() }
     val zipFile = File.createTempFile("meu-ponto-restore-", ".zip", context.cacheDir)
@@ -87,7 +107,7 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     entries++
-                    if (entries > MaxRestoreZipEntries) error("Backup excede o limite de arquivos")
+                    if (entries > MAX_RESTORE_ZIP_ENTRIES) error("Backup excede o limite de arquivos")
                     if (!entry.isDirectory &&
                         entry.name != "manifest.json" &&
                         !entry.name.startsWith("images/")
@@ -96,8 +116,8 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
                     }
                     val maximumBytes = when {
                         entry.isDirectory -> 0L
-                        entry.name == "manifest.json" -> MaxRestoreManifestBytes
-                        else -> MaxRestoreImageBytes
+                        entry.name == "manifest.json" -> MAX_RESTORE_MANIFEST_BYTES
+                        else -> MAX_RESTORE_IMAGE_BYTES
                     }
                     if (entry.size > maximumBytes) error("Backup excede o tamanho permitido")
                     val target = File(restoreDir, entry.name)
@@ -127,7 +147,7 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
         val manifestFile = File(restoreDir, "manifest.json")
         if (!manifestFile.isFile) error("Manifesto do backup ausente")
         val items = JSONArray(manifestFile.readText(Charsets.UTF_8))
-        if (items.length() > MaxRestoreManifestItems) error("Backup excede o limite de registros")
+        if (items.length() > MAX_RESTORE_MANIFEST_ITEMS) error("Backup excede o limite de registros")
         val destinationDir = File(context.filesDir, "receipts").apply { mkdirs() }
         val restored = buildList {
             for (index in 0 until items.length()) {
@@ -170,8 +190,14 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
     }
 }
 
+/**
+ * Deriva a chave AES da senha do usuário com PBKDF2-HMAC-SHA256.
+ *
+ * [BACKUP_ITERATIONS] segue a recomendação do OWASP (>= 120k para SHA-256); subir esse número
+ * invalida a leitura de backups antigos, então qualquer mudança exige versionar o formato.
+ */
 private fun deriveBackupKey(password: String, salt: ByteArray): SecretKeySpec {
-    val spec = PBEKeySpec(password.toCharArray(), salt, BackupIterations, 256)
+    val spec = PBEKeySpec(password.toCharArray(), salt, BACKUP_ITERATIONS, 256)
     return try {
         SecretKeySpec(
             SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded,
@@ -189,8 +215,8 @@ private fun encryptBackup(source: File, context: Context, destination: Uri, pass
         init(Cipher.ENCRYPT_MODE, deriveBackupKey(password, salt), GCMParameterSpec(128, iv))
     }
     context.contentResolver.openOutputStream(destination)?.use { output ->
-        output.write(BackupMagic)
-        output.write(byteArrayOf(BackupVersion))
+        output.write(BACKUP_MAGIC)
+        output.write(byteArrayOf(BACKUP_VERSION))
         output.write(salt)
         output.write(iv)
         CipherOutputStream(output, cipher).use { encrypted ->
@@ -201,14 +227,14 @@ private fun encryptBackup(source: File, context: Context, destination: Uri, pass
 
 private fun decryptOrCopyBackup(context: Context, sourceUri: Uri, destination: File, password: String) {
     context.contentResolver.openInputStream(sourceUri)?.use { input ->
-        val header = ByteArray(BackupMagic.size)
+        val header = ByteArray(BACKUP_MAGIC.size)
         var read = 0
         while (read < header.size) {
             val count = input.read(header, read, header.size - read)
             if (count <= 0) break
             read += count
         }
-        val encrypted = read == BackupMagic.size && header.contentEquals(BackupMagic)
+        val encrypted = read == BACKUP_MAGIC.size && header.contentEquals(BACKUP_MAGIC)
         if (!encrypted) {
             destination.outputStream().use { output ->
                 output.write(header, 0, read)
@@ -217,7 +243,7 @@ private fun decryptOrCopyBackup(context: Context, sourceUri: Uri, destination: F
             return
         }
         val version = input.read()
-        if (version != BackupVersion.toInt()) error("Versão de backup não suportada")
+        if (version != BACKUP_VERSION.toInt()) error("Versão de backup não suportada")
         val salt = ByteArray(16).also { input.readFully(it) }
         val iv = ByteArray(12).also { input.readFully(it) }
         if (password.isBlank()) error("Este backup precisa de uma senha")
