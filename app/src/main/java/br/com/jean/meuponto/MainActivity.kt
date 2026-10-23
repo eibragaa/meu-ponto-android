@@ -59,9 +59,9 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -127,14 +127,21 @@ import br.com.jean.meuponto.data.decodePreview
 import br.com.jean.meuponto.data.recognizeAndSave
 import br.com.jean.meuponto.data.restoreBackup
 import br.com.jean.meuponto.data.shareAsPdf
+import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.PayrollSettingsStore
 import br.com.jean.meuponto.domain.PeriodStats
+import br.com.jean.meuponto.domain.PunchChoice
 import br.com.jean.meuponto.domain.WorkStatsCalculator
 import br.com.jean.meuponto.domain.dayIssueSummary
+import br.com.jean.meuponto.domain.dayOccurrenceSummary
 import br.com.jean.meuponto.domain.formatMinutes
+import br.com.jean.meuponto.domain.occurrenceLabel
+import br.com.jean.meuponto.domain.punchChoiceOf
+import br.com.jean.meuponto.domain.receiptReviewHint
 import br.com.jean.meuponto.domain.receiptTimeLabel
 import br.com.jean.meuponto.ui.Coral
 import br.com.jean.meuponto.ui.DaySection
+import br.com.jean.meuponto.ui.DeleteReceiptDialog
 import br.com.jean.meuponto.ui.Ink
 import br.com.jean.meuponto.ui.InsightsSheet
 import br.com.jean.meuponto.ui.MeuPontoTheme
@@ -156,7 +163,6 @@ import br.com.jean.meuponto.ui.groupModes
 import br.com.jean.meuponto.ui.groupReceipts
 import br.com.jean.meuponto.ui.isValidWorkDate
 import br.com.jean.meuponto.ui.maskedFieldValue
-import br.com.jean.meuponto.ui.punchModes
 import br.com.jean.meuponto.updater.AboutSheet
 import br.com.jean.meuponto.updater.AppUpdater
 import br.com.jean.meuponto.updater.UpdateDialog
@@ -321,6 +327,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             "time" -> receipts.filter {
                 it.workTime.isNotBlank() || it.entryTime != null || it.exitTime != null
             }
+            "review" -> WorkStatsCalculator.receiptsNeedingReview(receipts)
             else -> receipts
         }
     }
@@ -683,7 +690,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         EditReceiptSheet(
             receipt = receipt,
             onDismiss = { receiptBeingEdited = null },
-            onSave = { workDate, entryTime, exitTime ->
+            onSave = { workDate, entryTime, exitTime, occurrence ->
                 scope.launch {
                     dao.updateReceiptDetails(
                         id = receipt.id,
@@ -691,7 +698,8 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                         workTime = entryTime ?: exitTime ?: "",
                         entryTime = entryTime,
                         exitTime = exitTime,
-                        needsReview = false
+                        needsReview = false,
+                        occurrence = occurrence
                     )
                     receiptBeingEdited = null
                     showMessage("Comprovante atualizado.")
@@ -725,25 +733,17 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
 
     receiptPendingDelete?.let { receipt ->
-        AlertDialog(
-            onDismissRequest = { receiptPendingDelete = null },
-            title = { Text("Excluir comprovante?") },
-            text = { Text("O comprovante e a imagem serão removidos deste aparelho.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            dao.delete(receipt.id)
-                            runCatching { File(receipt.imagePath).delete() }
-                            receiptPendingDelete = null
-                            if (receiptBeingViewed?.id == receipt.id) receiptBeingViewed = null
-                            showMessage("Comprovante excluído.")
-                        }
-                    }
-                ) { Text("Excluir") }
-            },
-            dismissButton = {
-                TextButton(onClick = { receiptPendingDelete = null }) { Text("Cancelar") }
+        DeleteReceiptDialog(
+            receipt = receipt,
+            onDismiss = { receiptPendingDelete = null },
+            onConfirm = {
+                scope.launch {
+                    dao.delete(receipt.id)
+                    runCatching { File(receipt.imagePath).delete() }
+                    receiptPendingDelete = null
+                    if (receiptBeingViewed?.id == receipt.id) receiptBeingViewed = null
+                    showMessage("Comprovante excluído.")
+                }
             }
         )
     }
@@ -1134,6 +1134,19 @@ private fun DayHeader(
                 )
             }
             Spacer(Modifier.width(8.dp))
+        } else if (day.occurrences.isNotEmpty()) {
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    dayOccurrenceSummary(day.occurrences),
+                    Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            Spacer(Modifier.width(8.dp))
         }
         Icon(
             if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
@@ -1230,7 +1243,7 @@ private fun ReceiptCard(
                         }
                     }
                     Text(
-                        if (receipt.needsReview) "Revisar data/horário" else File(receipt.imagePath).name,
+                        if (receipt.needsReview) receiptReviewHint(receipt) else File(receipt.imagePath).name,
                         style = MaterialTheme.typography.labelSmall,
                         color = if (receipt.needsReview) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -1424,38 +1437,34 @@ private fun BackupPasswordDialog(action: String, onDismiss: () -> Unit, onConfir
 /**
  * Folha de edição de um comprovante.
  *
- * `mode` define **o que este comprovante representa**, e é a única fonte de verdade sobre o que
- * será salvo:
- * - `both`  -> entrada e saída no mesmo registro;
- * - `entry` -> só a entrada (a saída virá em outro comprovante, às vezes no dia seguinte);
- * - `exit`  -> só a saída;
- * - `none`  -> sem horário (data apenas).
+ * A escolha em [PunchChoice] define **o que este comprovante representa** e é a única fonte de verdade
+ * sobre o que será salvo:
+ * - entrada e saída no mesmo registro (com "Inverter" se o OCR leu a ordem ao contrário);
+ * - só entrada ou só saída: a outra batida virá em outro comprovante, às vezes no dia seguinte. Se ela
+ *   nunca foi registrada, marque "Esquecimento": o dia fica resolvido, sem horas;
+ * - sem horário: só com falta, folga ou atestado.
  *
- * Ao confirmar, só o tipo escolhido é gravado. Era o bug P19: em "Só entrada", o campo de saída
- * (vazio ou herdado) também era salvo, gerando horas e pendências erradas.
+ * Comprovante que ainda não tem tipo (ex.: o OCR leu um só horário) começa sem escolha, e o botão de
+ * salvar fica desligado até o usuário decidir.
+ *
+ * Ao confirmar, só o horário do tipo escolhido é gravado. Era o bug P19: em "Só entrada", o campo de
+ * saída (vazio ou herdado) também era salvo, gerando horas e pendências erradas.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditReceiptSheet(
     receipt: Receipt,
     onDismiss: () -> Unit,
-    onSave: (workDate: String, entryTime: String?, exitTime: String?) -> Unit
+    onSave: (workDate: String, entryTime: String?, exitTime: String?, occurrence: DayOccurrence?) -> Unit
 ) {
     var workDateField by remember(receipt.id) {
         mutableStateOf(TextFieldValue(receipt.workDate, TextRange(receipt.workDate.length)))
     }
     val workDate = workDateField.text
-    var mode by remember(receipt.id) {
-        mutableStateOf(
-            when {
-                receipt.entryTime != null && receipt.exitTime != null -> "both"
-                receipt.entryTime != null -> "entry"
-                receipt.exitTime != null -> "exit"
-                receipt.workTime.isNotBlank() -> "entry"
-                else -> "none"
-            }
-        )
-    }
+    var choice by remember(receipt.id) { mutableStateOf(punchChoiceOf(receipt)) }
+    var occurrence by remember(receipt.id) { mutableStateOf(receipt.occurrence) }
+    // Entrada e saída têm campos separados. Nos modos de uma batida só, o campo mostrado é o da batida
+    // escolhida, e o horário acompanha a troca entre entrada e saída (ver `pick`).
     val initialEntry = receipt.entryTime ?: if (receipt.exitTime == null) {
         receipt.workTime.takeIf { it.isNotBlank() }.orEmpty()
     } else {
@@ -1464,26 +1473,49 @@ private fun EditReceiptSheet(
     var entryField by remember(receipt.id) {
         mutableStateOf(TextFieldValue(initialEntry, TextRange(initialEntry.length)))
     }
-    val entryTime = entryField.text
     val initialExit = receipt.exitTime ?: ""
     var exitField by remember(receipt.id) {
         mutableStateOf(TextFieldValue(initialExit, TextRange(initialExit.length)))
     }
+    val entryTime = entryField.text
     val exitTime = exitField.text
 
+    val selectedChoice = choice
+    val selectedOccurrence = occurrence
     val dateValid = isValidWorkDate(workDate)
     val entryValid = entryTime.isBlank() || WorkStatsCalculator.parseClockTime(entryTime) != null
     val exitValid = exitTime.isBlank() || WorkStatsCalculator.parseClockTime(exitTime) != null
-    val timesValid = when (mode) {
-        "both" -> entryTime.isNotBlank() && exitTime.isNotBlank() && entryValid && exitValid
-        "entry" -> entryTime.isNotBlank() && entryValid
-        "exit" -> exitTime.isNotBlank() && exitValid
-        else -> true
+    val timesValid = when (selectedChoice) {
+        PunchChoice.BOTH -> entryTime.isNotBlank() && exitTime.isNotBlank() && entryValid && exitValid
+        PunchChoice.ENTRY -> entryTime.isNotBlank() && entryValid
+        PunchChoice.EXIT -> exitTime.isNotBlank() && exitValid
+        PunchChoice.NONE -> true
+        null -> false
     }
-    val duration = if (mode == "both") {
+    // Sem horário, a ocorrência é obrigatória (falta, folga ou atestado). Com uma batida só, é opcional
+    // (esquecimento). Com entrada e saída, não existe ocorrência.
+    val occurrenceValid = selectedChoice?.let { choice ->
+        selectedOccurrence?.let { occ -> choice.occurrences.contains(occ) }
+            ?: (choice != PunchChoice.NONE)
+    } ?: false
+    val canSave = dateValid && timesValid && occurrenceValid
+    val duration = if (selectedChoice == PunchChoice.BOTH) {
         WorkStatsCalculator.durationMinutes(entryTime, exitTime)
     } else {
         null
+    }
+
+    fun pick(next: PunchChoice) {
+        // Entre "Só entrada" e "Só saída", o horário digitado acompanha a troca.
+        if (next == PunchChoice.ENTRY && entryField.text.isBlank()) {
+            entryField = exitField.copy(selection = TextRange(exitField.text.length))
+        }
+        if (next == PunchChoice.EXIT && exitField.text.isBlank()) {
+            exitField = entryField.copy(selection = TextRange(entryField.text.length))
+        }
+        choice = next
+        // Só mantém a ocorrência que combina com a nova escolha.
+        occurrence = occurrence?.takeIf { it in next.occurrences }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
@@ -1501,7 +1533,7 @@ private fun EditReceiptSheet(
                 color = MaterialTheme.colorScheme.onBackground
             )
             Text(
-                "Confirme o que o OCR identificou ou corrija os campos antes de arquivar.",
+                "Escolha como este comprovante registra o ponto. Só é salvo o que estiver escolhido aqui.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1526,60 +1558,122 @@ private fun EditReceiptSheet(
             )
 
             Text(
-                "Registro de horário",
+                "Registro de ponto",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
             )
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(punchModes) { option ->
+                items(PunchChoice.entries) { option ->
                     FilterChip(
-                        selected = mode == option.key,
-                        onClick = { mode = option.key },
+                        selected = selectedChoice == option,
+                        onClick = { pick(option) },
                         label = { Text(option.label) },
                         shape = RoundedCornerShape(12.dp),
                         colors = organizeChipColors(),
-                        border = organizeChipBorder(mode == option.key)
+                        border = organizeChipBorder(selectedChoice == option)
                     )
                 }
             }
-
-            if (mode == "both" || mode == "entry") {
-                OutlinedTextField(
-                    value = entryField,
-                    onValueChange = { entryField = maskedFieldValue(it, ::formatTimeInput) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text(if (mode == "both") "Entrada" else "Horário") },
-                    placeholder = { Text("hh:mm") },
-                    supportingText = {
-                        Text(if (entryTime.isBlank()) "Ex.: 10:20" else "Horário de entrada")
-                    },
-                    isError = entryTime.isNotBlank() && !entryValid,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            }
-            if (mode == "both" || mode == "exit") {
-                OutlinedTextField(
-                    value = exitField,
-                    onValueChange = { exitField = maskedFieldValue(it, ::formatTimeInput) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text(if (mode == "both") "Saída" else "Horário") },
-                    placeholder = { Text("hh:mm") },
-                    supportingText = {
-                        Text(if (exitTime.isBlank()) "Ex.: 10:20" else "Horário de saída")
-                    },
-                    isError = exitTime.isNotBlank() && !exitValid,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            }
-            if (mode == "both") {
+            if (selectedChoice == null) {
                 Text(
-                    if (duration != null) "Total calculado: ${formatMinutes(duration)}" else "Informe entrada e saída para calcular as horas.",
+                    "Escolha uma opção acima para poder salvar.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (duration != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            when (selectedChoice) {
+                PunchChoice.ENTRY -> PunchTimeField("Entrada", entryField, entryValid) { entryField = it }
+                PunchChoice.EXIT -> PunchTimeField("Saída", exitField, exitValid) { exitField = it }
+                PunchChoice.BOTH -> {
+                    PunchTimeField("Entrada", entryField, entryValid) { entryField = it }
+                    PunchTimeField("Saída", exitField, exitValid) { exitField = it }
+                    TextButton(
+                        onClick = {
+                            val previousEntry = entryField
+                            entryField = exitField
+                            exitField = previousEntry
+                        },
+                        enabled = entryTime.isNotBlank() || exitTime.isNotBlank()
+                    ) {
+                        Icon(Icons.Outlined.SwapVert, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Inverter entrada e saída")
+                    }
+                    val invalidShift = duration == null && entryTime.isNotBlank() && exitTime.isNotBlank()
+                    Text(
+                        when {
+                            duration != null -> "Total calculado: ${formatMinutes(duration)}"
+                            invalidShift -> "Jornada inválida: confira os horários (entre 1 min e 16h)."
+                            else -> "Informe entrada e saída para calcular as horas."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when {
+                            duration != null -> MaterialTheme.colorScheme.primary
+                            invalidShift -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                PunchChoice.NONE -> {
+                    Text(
+                        "Motivo",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(PunchChoice.NONE.occurrences.toList()) { option ->
+                            FilterChip(
+                                selected = selectedOccurrence == option,
+                                onClick = { occurrence = option },
+                                label = { Text(occurrenceLabel(option)) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = organizeChipColors(),
+                                border = organizeChipBorder(selectedOccurrence == option)
+                            )
+                        }
+                    }
+                    Text(
+                        if (selectedOccurrence == null) {
+                            "Sem horário, escolha o motivo para salvar."
+                        } else {
+                            "O dia fica resolvido, sem horas."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                null -> Unit
+            }
+
+            if (selectedChoice == PunchChoice.ENTRY || selectedChoice == PunchChoice.EXIT) {
+                Text(
+                    "Outra batida",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf(DayOccurrence.FORGOT_PUNCH)) { option ->
+                        FilterChip(
+                            selected = selectedOccurrence == option,
+                            onClick = {
+                                occurrence = if (selectedOccurrence == option) null else option
+                            },
+                            label = { Text(occurrenceLabel(option)) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = organizeChipColors(),
+                            border = organizeChipBorder(selectedOccurrence == option)
+                        )
+                    }
+                }
+                Text(
+                    "Use quando a outra batida nunca foi registrada. O dia fica resolvido, sem horas.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -1592,16 +1686,20 @@ private fun EditReceiptSheet(
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
-                        // Só persiste o horário do tipo escolhido (ver KDoc de EditReceiptSheet).
-                        val keepEntry = mode == "both" || mode == "entry"
-                        val keepExit = mode == "both" || mode == "exit"
-                        onSave(
-                            workDate.trim(),
-                            entryTime.trim().takeIf { keepEntry && it.isNotBlank() },
-                            exitTime.trim().takeIf { keepExit && it.isNotBlank() }
-                        )
+                        val chosen = selectedChoice
+                        if (chosen != null) {
+                            // Só persiste o horário do tipo escolhido (ver KDoc de EditReceiptSheet).
+                            val keepEntry = chosen == PunchChoice.BOTH || chosen == PunchChoice.ENTRY
+                            val keepExit = chosen == PunchChoice.BOTH || chosen == PunchChoice.EXIT
+                            onSave(
+                                workDate.trim(),
+                                entryTime.trim().takeIf { keepEntry && it.isNotBlank() },
+                                exitTime.trim().takeIf { keepExit && it.isNotBlank() },
+                                selectedOccurrence
+                            )
+                        }
                     },
-                    enabled = dateValid && timesValid,
+                    enabled = canSave,
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Icon(Icons.Outlined.TaskAlt, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -1611,6 +1709,27 @@ private fun EditReceiptSheet(
             }
         }
     }
+}
+
+/** Campo de horário `hh:mm` da folha de edição, com máscara e erro quando o horário não é válido. */
+@Composable
+private fun PunchTimeField(
+    label: String,
+    field: TextFieldValue,
+    isValid: Boolean,
+    onValueChange: (TextFieldValue) -> Unit
+) {
+    OutlinedTextField(
+        value = field,
+        onValueChange = { onValueChange(maskedFieldValue(it, ::formatTimeInput)) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        label = { Text(label) },
+        placeholder = { Text("hh:mm") },
+        supportingText = { Text(if (field.text.isBlank()) "Ex.: 10:20" else "Horário em hh:mm") },
+        isError = field.text.isNotBlank() && !isValid,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+    )
 }
 
 @Composable

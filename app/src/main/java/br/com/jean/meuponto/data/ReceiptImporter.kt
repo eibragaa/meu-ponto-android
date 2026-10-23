@@ -36,11 +36,13 @@ internal fun copyToPrivateStorage(context: Context, uri: Uri): File {
  *
  * Heurística de extração, deliberadamente simples:
  * - data: primeira ocorrência de `dd/MM/yyyy` (ou `dd.MM.yyyy`/`dd-MM-yyyy`) válida;
- * - horários: todas as ocorrências de `HH:mm` válidas, em ordem de leitura; a primeira vira entrada
- *   e a segunda saída (o comprovante de ponto lista entrada antes de saída).
+ * - horários: todas as ocorrências de `HH:mm` válidas, em ordem de leitura. Dois ou mais viram
+ *   entrada e saída, nessa ordem (ver `WorkStatsCalculator.ocrPunches`); um só fica sem tipo, porque
+ *   o OCR não sabe se é entrada ou saída.
  *
- * O que não for reconhecido fica em branco e `needsReview = true`, para o usuário corrigir na UI.
- * A mensagem devolvida é o texto do snackbar — por isso descreve o que faltou, não "erro".
+ * O que não for reconhecido, ou o que não tiver tipo, fica com `needsReview = true` para o usuário
+ * corrigir na UI. A mensagem devolvida é o texto do snackbar — por isso descreve o que faltou, não
+ * "erro".
  */
 internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: File): String {
     val text = withContext(Dispatchers.IO) {
@@ -57,19 +59,19 @@ internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: F
         .findAll(text)
         .mapNotNull { WorkStatsCalculator.normalizeClockTime(it.value) }
         .toList()
-    val entry = times.getOrNull(0)
-    val exit = times.getOrNull(1)
-    val needsReview = date == null || times.isEmpty()
+    val punches = WorkStatsCalculator.ocrPunches(times)
+    // Um horário só não diz se é entrada ou saída: fica para o usuário escolher na edição.
+    val needsReview = date == null || times.size < 2
 
     dao.insert(
         Receipt(
             capturedAt = System.currentTimeMillis(),
             workDate = date ?: "",
-            workTime = entry ?: exit ?: "",
+            workTime = punches.workTime,
             imagePath = file.absolutePath,
             recognizedText = text,
-            entryTime = entry,
-            exitTime = exit,
+            entryTime = punches.entry,
+            exitTime = punches.exit,
             needsReview = needsReview
         )
     )
@@ -78,6 +80,7 @@ internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: F
         date == null && times.isEmpty() -> "Comprovante salvo — revise data e horário."
         date == null -> "Comprovante salvo — revise a data."
         times.isEmpty() -> "Comprovante salvo — revise o horário."
+        times.size == 1 -> "Comprovante salvo — diga se o horário é entrada ou saída."
         else -> "Comprovante salvo — confira a data $date."
     }
 }

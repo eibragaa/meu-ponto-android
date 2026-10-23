@@ -57,6 +57,7 @@ import androidx.compose.ui.window.DialogProperties
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.domain.WorkStatsCalculator
 import br.com.jean.meuponto.domain.formatMinutes
+import br.com.jean.meuponto.domain.receiptTimeLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -222,6 +223,8 @@ fun ReceiptViewer(
 }
 
 private fun timeSummary(receipt: Receipt): String {
+    // Ocorrência (esquecimento, falta, folga, atestado) já diz o que aconteceu no dia.
+    if (receipt.occurrence != null) return receiptTimeLabel(receipt)
     val duration = WorkStatsCalculator.durationMinutes(receipt)
     return when {
         receipt.entryTime != null && receipt.exitTime != null ->

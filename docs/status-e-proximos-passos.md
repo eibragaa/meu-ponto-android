@@ -149,6 +149,25 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - Release publicada como **Latest**, com `Meu-Ponto-v0.6.3.apk` e `app-play-release.aab`.
 - **Pendente:** QA manual do gesto, confirmação, seleção, TalkBack e agrupamentos no aparelho.
 
+### 1.19 Revisão guiada: ocorrências, ordem da batida e exclusão (23/10/2026, não publicado)
+- Modelo: `Receipt.occurrence` (`DayOccurrence`: esquecimento, falta, folga, atestado). Room v3 com
+  `MIGRATION_2_3` (coluna nula, sem mudar registros antigos). Backup ZIP grava e lê o campo.
+- Pareamento: comprovante com ocorrência sai do pareamento e não soma horas. Falta, folga e atestado
+  resolvem o dia sem horas; esquecimento resolve a batida que faltou.
+- Folha de edição: escolha única (`PunchChoice`: entrada e saída, só entrada, só saída, sem horário).
+  Sem escolha, o salvar fica desligado. "Inverter entrada e saída" corrige leitura invertida do OCR.
+  Trocar entre "só entrada" e "só saída" mantém o horário digitado.
+- OCR: um horário só fica sem tipo (antes virava entrada). Dois ou mais: primeiro entrada, segundo saída.
+- Lista: filtro "Revisar" (comprovantes marcados e todos os comprovantes de dias pendentes). Card mostra
+  a ação que falta ("Diga se é entrada ou saída", "Revisar data", etc.).
+- Exclusão: swipe com fundo do tema (`errorContainer`), círculo de ação e vibração ao armar. Diálogo de
+  confirmação mostra data e horários do comprovante antes de apagar.
+- Testes novos: `DayOccurrenceTest`, `PunchChoiceTest`, `ReceiptLabelsTest`.
+- **Pendente antes de publicar:** rodar testes e lint no CI (este ambiente não tem Android SDK); gerar e
+  commitar `app/schemas/.../3.json` no build; QA no aparelho (editor, migração de dados reais, swipe).
+- **Decisão pendente:** falta, folga e atestado hoje contam como dia trabalhado com 0h na média e no
+  saldo esperado. Confirmar se devem ser neutros no saldo (e se atestado é pago).
+
 ---
 
 ## 2. Estado atual do código

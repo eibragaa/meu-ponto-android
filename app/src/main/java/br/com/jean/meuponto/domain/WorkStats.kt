@@ -42,7 +42,9 @@ data class WorkDayStats(
     val minutes: Int,
     val receiptCount: Int,
     /** Motivos distintos, na ordem de [DayIssue]; vazio quando o dia está consistente. */
-    val issues: List<DayIssue>
+    val issues: List<DayIssue>,
+    /** Ocorrências resolvidas no dia (esquecimento, falta, folga, atestado), sem repetição. */
+    val occurrences: List<DayOccurrence> = emptyList()
 ) {
     /** Um dia está pendente quando existe pelo menos um motivo em [issues]. */
     val pending: Boolean get() = issues.isNotEmpty()
@@ -147,6 +149,8 @@ object WorkStatsCalculator {
             val issues = paired.issuesByDate[date].orEmpty().toMutableSet()
             dayReceipts.forEach { receipt ->
                 if (parseWorkDate(receipt.workDate) == null) issues += DayIssue.UNKNOWN_DATE
+                // Comprovante com ocorrência já está resolvido: não soma horas nem gera motivo.
+                if (receipt.occurrence != null) return@forEach
                 if (parseClockTime(receipt.entryTime) != null && parseClockTime(receipt.exitTime) != null) {
                     val worked = durationMinutes(receipt.entryTime, receipt.exitTime)
                     if (worked != null) minutes += worked else issues += DayIssue.IMPLAUSIBLE_SHIFT
@@ -154,16 +158,45 @@ object WorkStatsCalculator {
             }
             // "Marcado para revisão" é o motivo genérico: só aparece quando não há um mais específico,
             // para o cabeçalho não repetir a mesma dúvida em duas linhas.
-            if (issues.isEmpty() && dayReceipts.any { it.needsReview }) {
+            if (issues.isEmpty() && dayReceipts.any { it.needsReview && it.occurrence == null }) {
                 issues += DayIssue.MARKED_FOR_REVIEW
             }
             WorkDayStats(
                 date = date,
                 minutes = minutes,
                 receiptCount = dayReceipts.size,
-                issues = issues.sorted()
+                issues = issues.sorted(),
+                occurrences = dayReceipts.mapNotNull { it.occurrence }.distinct().sorted()
             )
         }
+    }
+
+    /**
+     * Comprovantes da aba/filtro "Revisar": os marcados para revisão e todos os comprovantes de dias
+     * pendentes. A batida que falta pode estar em outro comprovante do mesmo dia, então o dia inteiro
+     * aparece para o usuário ver o contexto.
+     */
+    fun receiptsNeedingReview(receipts: List<Receipt>): List<Receipt> {
+        val pendingDays = dayStats(receipts).filterValues { it.pending }.keys
+        return receipts.filter { receipt ->
+            (receipt.needsReview && receipt.occurrence == null) ||
+                receipt.workDate.ifBlank { REVIEW_DATE_KEY } in pendingDays
+        }
+    }
+
+    /** Resultado da leitura de horários feita pelo OCR. */
+    data class OcrPunches(val workTime: String, val entry: String?, val exit: String?)
+
+    /**
+     * Interpreta os horários lidos pelo OCR **sem presumir a ordem**:
+     * - um horário só não diz se é entrada ou saída: fica sem tipo, para o usuário escolher;
+     * - dois ou mais: o primeiro vira entrada e o segundo saída. Se a leitura veio invertida, a folha
+     *   de edição tem o botão "Inverter"; a jornada invertida também aparece como pendente.
+     */
+    fun ocrPunches(times: List<String>): OcrPunches = when (times.size) {
+        0 -> OcrPunches(workTime = "", entry = null, exit = null)
+        1 -> OcrPunches(workTime = times[0], entry = null, exit = null)
+        else -> OcrPunches(workTime = times[0], entry = times[0], exit = times[1])
     }
 
     fun periodStats(
@@ -258,6 +291,8 @@ object WorkStatsCalculator {
      *
      * Comprovantes que já trazem entrada e saída no mesmo registro são ignorados aqui: eles são
      * somados por [durationMinutes] em [dayStats], o que evita contar a mesma jornada duas vezes.
+     * Comprovantes com [Receipt.occurrence] também ficam de fora: a batida esquecida não pode ser
+     * pareada com uma batida de outro dia.
      */
     private fun pairPunches(receipts: List<Receipt>): PairResult {
         val minutesByDate = mutableMapOf<String, Int>()
@@ -269,6 +304,7 @@ object WorkStatsCalculator {
         val dated = mutableListOf<Punch>()
 
         receipts.forEach { receipt ->
+            if (receipt.occurrence != null) return@forEach
             val key = receipt.workDate.ifBlank { REVIEW_DATE_KEY }
             val entry = parseClockTime(receipt.entryTime)
             val exit = parseClockTime(receipt.exitTime)

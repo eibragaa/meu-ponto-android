@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import br.com.jean.meuponto.domain.DayOccurrence
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -49,8 +50,8 @@ interface ReceiptDao {
 
     @Query(
         "UPDATE receipts SET workDate = :workDate, workTime = :workTime, " +
-            "entryTime = :entryTime, exitTime = :exitTime, needsReview = :needsReview " +
-            "WHERE id = :id"
+            "entryTime = :entryTime, exitTime = :exitTime, needsReview = :needsReview, " +
+            "occurrence = :occurrence WHERE id = :id"
     )
     suspend fun updateReceiptDetails(
         id: Long,
@@ -58,7 +59,8 @@ interface ReceiptDao {
         workTime: String,
         entryTime: String?,
         exitTime: String?,
-        needsReview: Boolean
+        needsReview: Boolean,
+        occurrence: DayOccurrence?
     )
 
     @Query("DELETE FROM receipts WHERE id = :id")

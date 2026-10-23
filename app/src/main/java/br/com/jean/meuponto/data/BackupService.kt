@@ -2,6 +2,7 @@ package br.com.jean.meuponto.data
 
 import android.content.Context
 import android.net.Uri
+import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.WorkStatsCalculator
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -68,6 +69,7 @@ internal suspend fun createBackup(context: Context, dao: ReceiptDao, destination
                         .put("entryTime", receipt.entryTime ?: "")
                         .put("exitTime", receipt.exitTime ?: "")
                         .put("needsReview", receipt.needsReview)
+                        .put("occurrence", receipt.occurrence?.name ?: "")
                         .put("recognizedText", receipt.recognizedText)
                         .put("imageEntry", imageEntry)
                 )
@@ -164,14 +166,18 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
                     entryTime = item.optString("entryTime").takeIf { it.isNotBlank() },
                     exitTime = item.optString("exitTime").takeIf { it.isNotBlank() },
                     needsReview = item.optBoolean("needsReview", false) ||
-                        WorkStatsCalculator.parseWorkDate(item.getString("workDate")) == null
+                        WorkStatsCalculator.parseWorkDate(item.getString("workDate")) == null,
+                    // Backups antigos não têm o campo: ficam sem ocorrência (comprovante normal).
+                    occurrence = item.optString("occurrence").takeIf { it.isNotBlank() }
+                        ?.let { DayOccurrence.valueOf(it) }
                 )
                 val alreadyRestored = dao.getByCapturedAt(candidate.capturedAt).any { existing ->
                     existing.workDate == candidate.workDate &&
                         existing.workTime == candidate.workTime &&
                         existing.entryTime == candidate.entryTime &&
                         existing.exitTime == candidate.exitTime &&
-                        existing.recognizedText == candidate.recognizedText
+                        existing.recognizedText == candidate.recognizedText &&
+                        existing.occurrence == candidate.occurrence
                 }
                 if (alreadyRestored) continue
                 val imageDestination = File(

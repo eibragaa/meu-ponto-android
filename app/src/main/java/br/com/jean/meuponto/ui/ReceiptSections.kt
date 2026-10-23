@@ -2,6 +2,7 @@ package br.com.jean.meuponto.ui
 
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.domain.DayIssue
+import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.REVIEW_DATE_KEY
 import br.com.jean.meuponto.domain.WorkDayStats
 
@@ -14,7 +15,8 @@ internal data class FilterOption(val key: String, val label: String)
 internal val filters = listOf(
     FilterOption("all", "Todos"),
     FilterOption("today", "Hoje"),
-    FilterOption("time", "Com horário")
+    FilterOption("time", "Com horário"),
+    FilterOption("review", "Revisar")
 )
 
 internal val groupModes = listOf(
@@ -22,13 +24,6 @@ internal val groupModes = listOf(
     FilterOption("day", "Dia"),
     FilterOption("week", "Semana"),
     FilterOption("none", "Lista")
-)
-
-internal val punchModes = listOf(
-    FilterOption("both", "Entrada e saída"),
-    FilterOption("entry", "Só entrada"),
-    FilterOption("exit", "Só saída"),
-    FilterOption("none", "Sem horário")
 )
 
 internal data class ReceiptGroup(val title: String, val receipts: List<Receipt>)
@@ -39,7 +34,8 @@ internal data class DaySection(
     val receipts: List<Receipt>,
     val minutes: Int,
     val receiptCount: Int,
-    val issues: List<DayIssue>
+    val issues: List<DayIssue>,
+    val occurrences: List<DayOccurrence> = emptyList()
 ) {
     val pending: Boolean get() = issues.isNotEmpty()
 }
@@ -80,7 +76,8 @@ internal fun buildMonthSections(
                                 listOf(DayIssue.MARKED_FOR_REVIEW)
                             } else {
                                 emptyList()
-                            }
+                            },
+                        occurrences = dayStat?.occurrences.orEmpty()
                     )
                 }
                 .sortedWith(

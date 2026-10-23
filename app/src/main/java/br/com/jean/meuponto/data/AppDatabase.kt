@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * `exportSchema = true` mantém `app/schemas/` versionado no git: toda mudança de entidade precisa
  * de migration escrita à mão **e** do schema novo commitado, senão o app quebra no update.
  */
-@Database(entities = [Receipt::class], version = 2, exportSchema = true)
+@Database(entities = [Receipt::class], version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
 
@@ -30,13 +30,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v3 adiciona a ocorrência (esquecimento, falta, folga, atestado). Nula = comprovante normal,
+        // então nenhum registro antigo muda de significado.
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE receipts ADD COLUMN occurrence TEXT")
+            }
+        }
+
         fun get(context: Context): AppDatabase = INSTANCE ?: synchronized(this) {
             INSTANCE ?: Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "meu-ponto.db"
             )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 .also { INSTANCE = it }
         }

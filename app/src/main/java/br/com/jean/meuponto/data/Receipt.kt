@@ -2,6 +2,7 @@ package br.com.jean.meuponto.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import br.com.jean.meuponto.domain.DayOccurrence
 
 /**
  * Um comprovante de ponto digitalizado.
@@ -14,6 +15,9 @@ import androidx.room.PrimaryKey
  * - entrada e saída no mesmo registro -> [entryTime] + [exitTime];
  * - apenas uma batida -> só [entryTime] **ou** só [exitTime];
  * - um horário solto sem tipo -> [workTime].
+ *
+ * [occurrence] resolve o comprovante sem jornada completa (esquecimento, falta, folga ou atestado).
+ * Nulo significa comprovante normal, que entra no pareamento de batidas.
  *
  * Migrar esses campos para `LocalDate`/`LocalTime` está no roadmap do padrão de engenharia (ENG-4):
  * é a refatoração mais invasiva e exige conversores do Room.
@@ -28,5 +32,6 @@ data class Receipt(
     val recognizedText: String,
     val entryTime: String? = null,
     val exitTime: String? = null,
-    val needsReview: Boolean = false
+    val needsReview: Boolean = false,
+    val occurrence: DayOccurrence? = null
 )
