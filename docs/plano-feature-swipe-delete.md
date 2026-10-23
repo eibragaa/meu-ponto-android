@@ -1,6 +1,6 @@
 # Feature — apagar comprovante com swipe para a direita
 
-_Status: planejamento. Nada implementado ainda._
+_Status: implementado na branch `feat-swipe-delete` em 23/10/2026. CI verde no run `39952315886`; QA manual no aparelho pendente._
 
 Objetivo: na lista atual de comprovantes, puxar o card para a direita e revelar a ação **Apagar**,
 sem abrir o visualizador.
@@ -206,9 +206,9 @@ versão sem autorização do dono.
 
 ## 9. Decisões em aberto
 
-1. Confirmar o MVP “swipe → diálogo” ou querer o botão “Apagar” persistente?
-2. Habilitar haptic ao cruzar o limiar?
-3. Versão alvo: `0.7.0` ou `0.6.2`?
+1. MVP “swipe → diálogo” confirmado na implementação.
+2. Haptic não incluído nesta rodada.
+3. Versão alvo: pendente (`0.7.0` ou `0.6.3`).
 
 ## 10. Fora de escopo
 
