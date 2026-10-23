@@ -1,6 +1,6 @@
 # Meu Ponto — status atual e próximos passos
 
-_Atualizado em 23/10/2026. Versão publicada: `v0.6.3` (`versionCode 13`)._
+_Atualizado em 23/10/2026. Versão publicada: `v0.6.5` (`versionCode 15`)._
 
 Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
 
@@ -171,6 +171,28 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - **Decisão pendente:** falta, folga e atestado hoje contam como dia trabalhado com 0h na média e no
   saldo esperado. Confirmar se devem ser neutros no saldo (e se atestado é pago).
 
+### 1.20 Release v0.6.4 — revisão guiada publicada (23/10/2026)
+- `versionName` `0.6.4` / `versionCode` 14 no commit `d02770b`; tag `v0.6.4`; run `39978456425`.
+- O primeiro run do tag falhou em `kspPlayDebugKotlin` (`Empty schema file`) porque o cache do Gradle
+  foi salvo depois de um crash do Kotlin daemon. `gh cache delete --all` + rerun resolveu; não era código.
+- Release publicada com `Meu-Ponto-v0.6.4.apk` e `app-play-release.aab`, notas de
+  [`release-notes-v0.6.4.md`](release-notes-v0.6.4.md).
+
+### 1.21 Acabamento visual e correção do "Revisar" (publicado na v0.6.5, 23/10/2026)
+- **Selo "Revisar" preso**: `needsReview` só mantém o dia pendente quando o comprovante não tem
+  horário legível. Antes, qualquer comprovante marcado prendia o selo mesmo depois da correção.
+- **Batida sem tipo**: quando o dia tem exatamente uma batida tipada e um horário solto do lado
+  oposto no relógio, ele assume o papel que falta (caso da saída de sábado). Com dois horários soltos
+  ou fora de ordem, continua pendente para o usuário escolher.
+- **Interface**: ícone adaptativo (`mipmap-anydpi-v26` + monocromático), splash com glifo na zona
+  segura e fundo coral, `imePadding`/`adjustResize` nas folhas, contador "· 14" discreto, chevrons
+  20dp, cores do card de resumo nos tokens (`HeroNight*`) e `titleSmall` no tema.
+- **Verificação de atualização**: o resultado saiu do snackbar (ficava atrás do FAB/rodapé) e aparece
+  no próprio rodapé, com spinner enquanto verifica e mensagem por 6s.
+- Testes: 135 em 13 arquivos (novos: `horario sem tipo fecha o dia...`, `dois horarios sem tipo...`,
+  `marcacao de revisao convive com o motivo da batida`, `horario sem tipo antes da entrada...`).
+- `versionName` `0.6.5` / `versionCode` 15 no commit `d76b2e7`; tag `v0.6.5`; run `39988836374`.
+
 ---
 
 ## 2. Estado atual do código
@@ -185,7 +207,7 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 | Restore | Implementado, com checagem de duplicata por `capturedAt` |
 | Room | v3, schema exportado. Migrações 1→2 e 2→3 sem teste automatizado |
 | R8 em release | Ativado, sem regras extras. Testado só no WSA (fluxo completo não rodado) |
-| Testes unitários | 132 testes em 13 arquivos, incluindo updater/parser/coordinator/checksum e motivos de revisão do dia. Backup/PDF/DAO ainda sem teste |
+| Testes unitários | 135 testes em 13 arquivos, incluindo updater/parser/coordinator/checksum e motivos de revisão do dia. Backup/PDF/DAO ainda sem teste |
 | Strings | Hardcoded em pt-BR. Sem `strings.xml` |
 | Arquitetura | `MainActivity.kt` + camadas `domain/`, `data/`, `ui/`, `updater/` com `UpdateCoordinator`. Sem ViewModel nem Repository |
 | Padrão de engenharia | [`engineering-standards.md`](engineering-standards.md) + [`AGENTS.md`](../AGENTS.md). Pendências `ENG-1` a `ENG-6` |
@@ -198,7 +220,9 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 ### 3.0 Releases publicadas
 | Versão | Data | Estado | Assets | Assinatura |
 |---|---|---|---|---|
-| **`v0.6.3`** | 23/10/2026 12:47 UTC | **Latest** | `Meu-Ponto-v0.6.3.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| **`v0.6.5`** | 23/10/2026 16:52 UTC | **Latest** | `Meu-Ponto-v0.6.5.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| `v0.6.4` | 23/10/2026 15:48 UTC | Anterior | `Meu-Ponto-v0.6.4.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| `v0.6.3` | 23/10/2026 12:47 UTC | Anterior | `Meu-Ponto-v0.6.3.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.2` | 23/10/2026 11:47 UTC | Anterior | `Meu-Ponto-v0.6.2.apk` (42,4 MB), `app-play-release.aab` (21,7 MB) | Keystore novo (`4ef464d5…`) |
 | `v0.6.1` | 23/10/2026 08:29 UTC | Anterior | `Meu-Ponto-v0.6.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.0` | 23/10/2026 08:09 UTC | Anterior | `Meu-Ponto-v0.6.0.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
@@ -286,6 +310,22 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 ---
 
 ## 7. Próximos passos
+
+### 7.0 Retomar daqui (fim do dia 23/10/2026)
+- Branch de trabalho `feat-revisao-ocorrencias`, já integrada em `main` por fast-forward. Último
+  commit: `d76b2e7`.
+- Release `v0.6.5` é a **Latest**; cópia local do APK em `~/meu-ponto-apk/Meu-Ponto-v0.6.5.apk`.
+- **Em aberto, em ordem sugerida:**
+  1. Descobrir o comprovante que ainda mantém o "Revisar" em dias já corrigidos: exportar backup
+     **sem senha** e abrir o `manifest.json` (o ADB não lê o banco: build `user`, app não debuggable,
+     sem root). O pedido do dono é para validar isso com os dados reais.
+  2. Gerar e commitar `app/schemas/.../3.json` — exige build com Android SDK ou `gh auth refresh -s workflow`
+     para publicar o schema como artefato no CI.
+  3. QA no aparelho: editor, migração real 2→3, swipe, ícone/splash, teclado e aviso de atualização.
+  4. Decidir se falta, folga e atestado devem ser neutros no saldo (hoje contam como dia trabalhado com 0h).
+- Build local segue inviável no Termux (sem Android SDK/Gradle): validar sempre pelo
+  `android-release.yml` (`workflow_dispatch`) e conferir o run. Se o KSP falhar com `Empty schema file`,
+  limpar os caches do Actions (`gh cache delete --all`) antes de repetir.
 
 ### 7.1 Migração do celular (passo a passo, fazer uma vez)
 **Concluída em 23/10/2026:** o updater atualizou o aparelho de `0.5.0` para `0.5.1`, confirmando a assinatura e o acesso ao GitHub. O roteiro abaixo fica como registro.
