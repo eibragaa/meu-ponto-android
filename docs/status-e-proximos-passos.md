@@ -1,6 +1,6 @@
 # Meu Ponto — status atual e próximos passos
 
-_Atualizado em 23/10/2026. Versão publicada: `v0.6.2` (`versionCode 12`)._
+_Atualizado em 23/10/2026. Versão publicada: `v0.6.3` (`versionCode 13`)._
 
 Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
 
@@ -137,6 +137,18 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - Notas curadas aplicadas no GitHub com a seção **Novidades** para o banner do updater.
 - **Pendente:** confirmar no aparelho o banner/modal da `0.6.2` e o motivo no cabeçalho do dia.
 
+### 1.17 Swipe para apagar comprovante (23/10/2026)
+- Branch `feat-swipe-delete` com `SwipeToDeleteBox` usando `SwipeToDismissBox` do Material3.
+- Swipe para a direita revela **Apagar**; ao soltar, abre o diálogo de confirmação existente.
+- Swipe desabilitado no modo de seleção; ação de acessibilidade para TalkBack.
+- PR #3 mesclado na `main`; CI da branch verde no run `39952315886`.
+
+### 1.18 Release v0.6.3 — swipe para apagar (23/10/2026)
+- `versionName` `0.6.3` / `versionCode` 13 no commit `8d755af`.
+- Tag `v0.6.3` enviada; run `39954959601` concluído com sucesso.
+- Release publicada como **Latest**, com `Meu-Ponto-v0.6.3.apk` e `app-play-release.aab`.
+- **Pendente:** QA manual do gesto, confirmação, seleção, TalkBack e agrupamentos no aparelho.
+
 ---
 
 ## 2. Estado atual do código
@@ -164,7 +176,8 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 ### 3.0 Releases publicadas
 | Versão | Data | Estado | Assets | Assinatura |
 |---|---|---|---|---|
-| **`v0.6.2`** | 23/10/2026 11:47 UTC | **Latest** | `Meu-Ponto-v0.6.2.apk` (42,4 MB), `app-play-release.aab` (21,7 MB) | Keystore novo (`4ef464d5…`) |
+| **`v0.6.3`** | 23/10/2026 12:47 UTC | **Latest** | `Meu-Ponto-v0.6.3.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| `v0.6.2` | 23/10/2026 11:47 UTC | Anterior | `Meu-Ponto-v0.6.2.apk` (42,4 MB), `app-play-release.aab` (21,7 MB) | Keystore novo (`4ef464d5…`) |
 | `v0.6.1` | 23/10/2026 08:29 UTC | Anterior | `Meu-Ponto-v0.6.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.0` | 23/10/2026 08:09 UTC | Anterior | `Meu-Ponto-v0.6.0.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.5.1` | 23/10/2026 06:17 UTC | Anterior | `Meu-Ponto-v0.5.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
@@ -172,8 +185,8 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 | `v0.4.0` | 20/10/2026 | Anterior | `Meu-Ponto-v0.4.0.apk` (61 MB), **build debug** (debuggable) | Chave do runner (`2aa251…`) |
 | `v0.3.3` | 16/10/2026 | Anterior | `Meu-Ponto-v0.3.3.apk` | Chave do runner (`8f347d…`) |
 
-- Runs das tags `v0.5.1`, `v0.6.0`, `v0.6.1` e `v0.6.2` concluídos com sucesso; releases marcados como **Latest** na época.
-- Efeito no updater: quem está na `0.6.1` recebe a `0.6.2`; a atualização `0.5.0 → 0.5.1` e a instalação pelo próprio app já foram validadas no aparelho.
+- Runs das tags `v0.5.1`, `v0.6.0`, `v0.6.1`, `v0.6.2` e `v0.6.3` concluídos com sucesso; releases marcados como **Latest** na época.
+- Efeito no updater: quem está na `0.6.2` recebe a `0.6.3`; a atualização `0.5.0 → 0.5.1` e a instalação pelo próprio app já foram validadas no aparelho.
 
 ### 3.1 Keystore de distribuição (criado em 22/10/2026)
 - Arquivo: `C:\Users\jeanb\.meuponto\meu-ponto-release.jks` (fora do repo; `.gitignore` bloqueia `*.jks`).

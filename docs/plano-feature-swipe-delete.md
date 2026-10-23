@@ -1,6 +1,6 @@
 # Feature — apagar comprovante com swipe para a direita
 
-_Status: implementado na branch `feat-swipe-delete` em 23/10/2026. CI verde no run `39952315886`; QA manual no aparelho pendente._
+_Status: implementado, PR #3 mesclado e release `v0.6.3` publicado em 23/10/2026 (`versionCode 13`). QA manual no aparelho pendente. CI da branch: run `39952315886`; CI da tag: run `39954959601`._
 
 Objetivo: na lista atual de comprovantes, puxar o card para a direita e revelar a ação **Apagar**,
 sem abrir o visualizador.

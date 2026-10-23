@@ -61,7 +61,8 @@ app/src/main/java/br/com/jean/meuponto/
 │   ├── ReceiptSections.kt         agrupamento da lista
 │   ├── InsightsSheet.kt · PayrollSettingsSheet.kt · ReceiptViewer.kt
 │   ├── UpdateBanner.kt            banner de atualização disponível
-│   └── WhatsNewSheet.kt           novidades após instalar
+│   ├── WhatsNewSheet.kt           novidades após instalar
+│   └── SwipeToDeleteBox.kt        swipe para revelar ação de apagar
 └── updater/               atualização in-app (GitHub Releases)
     ├── AppUpdater.kt              consulta, download e instalação
     ├── UpdateModels.kt            modelos, resultados e erros tipados
@@ -110,13 +111,13 @@ Regra de dependência (permitido → proibido):
 
 Situação atual (baseline de 23/10/2026, para não regredir) — medido por chaves, não por linha:
 
-- `MainActivity.kt`: **1.611 LOC** (era 2.152 antes da extração). Ainda é o maior arquivo do repo.
+- `MainActivity.kt`: **1.630 LOC** (era 2.152 antes da extração). Ainda é o maior arquivo do repo.
 - Funções acima do limite duro (80 linhas), do maior para o menor:
   `MeuPontoApp` **504**, `UpdateDialog` 266, `PayrollSettingsSheet` 183, `EditReceiptSheet` 176,
   `AboutSheet` 162, `ReceiptViewer` 152, `SummaryCard` 109, `restoreBackup` 93,
   `InsightsSheet` 93, `ReceiptCard` 81.
 - Mediana das 64 funções: **18,5 linhas** — a maioria está saudável; o problema é concentrado.
-- Produção: 5.575 LOC em 29 arquivos. Testes: 1.216 LOC, **93 testes** em 9 arquivos, todos em JVM.
+- Produção: 5.776 LOC em 30 arquivos. Testes: 1.369 LOC, **108 testes** em 10 arquivos, todos em JVM.
 
 **Regra do escoteiro**: ao tocar em algo grande, extraia uma peça para o lugar certo (seção 2) e
 deixe o arquivo menor. Não é obrigatório refatorar tudo de uma vez; é obrigatório não piorar.
