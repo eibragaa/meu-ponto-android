@@ -33,9 +33,8 @@ class UpdatePreferencesTest {
     private val preferences = UpdatePreferences(store)
 
     @Test
-    fun `comeca sem checagem modal dispensa ou notas pendentes`() {
+    fun `comeca sem checagem dispensa ou notas pendentes`() {
         assertEquals(0L, preferences.lastCheckAt())
-        assertNull(preferences.lastPromptedVersion())
         assertNull(preferences.dismissedVersion())
         assertNull(preferences.consumePendingNotes("0.5.1"))
     }
@@ -47,15 +46,6 @@ class UpdatePreferencesTest {
 
         preferences.recordCheck(2_000L)
         assertEquals(2_000L, preferences.lastCheckAt())
-    }
-
-    @Test
-    fun `guarda a ultima versao que abriu o modal`() {
-        preferences.markPrompted("0.5.2")
-        assertEquals("0.5.2", preferences.lastPromptedVersion())
-
-        preferences.markPrompted("0.5.3")
-        assertEquals("0.5.3", preferences.lastPromptedVersion())
     }
 
     @Test

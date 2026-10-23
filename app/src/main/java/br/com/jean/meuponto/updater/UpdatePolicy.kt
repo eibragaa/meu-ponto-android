@@ -28,10 +28,6 @@ internal fun shouldCheck(trigger: CheckTrigger, now: Long, lastCheckAt: Long): B
         now - lastCheckAt >= AUTO_CHECK_INTERVAL_MS
 }
 
-/** `true` quando o modal ainda não foi mostrado para [version]. */
-internal fun shouldShowPrompt(version: String, lastPromptedVersion: String?): Boolean =
-    version.isNotBlank() && version != lastPromptedVersion
-
 /** `true` quando o banner daquela [version] não foi dispensado pelo usuário. */
 internal fun shouldShowBanner(version: String, dismissedVersion: String?): Boolean =
     version.isNotBlank() && version != dismissedVersion

@@ -51,17 +51,6 @@ class UpdatePolicyTest {
     }
 
     @Test
-    fun `modal nao repete para a mesma versao`() {
-        assertFalse(shouldShowPrompt("0.5.2", lastPromptedVersion = "0.5.2"))
-    }
-
-    @Test
-    fun `modal aparece para versao nova ou nunca mostrada`() {
-        assertTrue(shouldShowPrompt("0.5.2", lastPromptedVersion = "0.5.1"))
-        assertTrue(shouldShowPrompt("0.5.2", lastPromptedVersion = null))
-    }
-
-    @Test
     fun `banner nao aparece para versao dispensada`() {
         assertFalse(shouldShowBanner("0.5.2", dismissedVersion = "0.5.2"))
     }
@@ -73,8 +62,7 @@ class UpdatePolicyTest {
     }
 
     @Test
-    fun `versao vazia nao abre modal nem banner`() {
-        assertFalse(shouldShowPrompt("", lastPromptedVersion = null))
+    fun `versao vazia nao abre banner`() {
         assertFalse(shouldShowBanner("", dismissedVersion = null))
     }
 }

@@ -5,7 +5,6 @@ import android.content.Context
 private const val UPDATE_PREFERENCES_NAME = "meu_ponto_update_preferences"
 
 private const val KEY_LAST_CHECK_AT = "last_check_at"
-private const val KEY_LAST_PROMPTED_VERSION = "last_prompted_version"
 private const val KEY_DISMISSED_VERSION = "dismissed_version"
 private const val KEY_PENDING_NOTES_VERSION = "pending_notes_version"
 private const val KEY_PENDING_NOTES = "pending_notes"
@@ -43,8 +42,9 @@ internal class SharedPreferencesUpdateStore(context: Context) : UpdateStore {
 }
 
 /**
- * Preferências do updater: throttle entre verificações, controle do modal/banner e notas pendentes
- * para mostrar depois da instalação.
+ * Preferências do updater: throttle entre verificações, dispensa do banner por versão e notas
+ * pendentes para mostrar depois da instalação. O modal não é persistido: ele volta a aparecer em
+ * cada verificação bem-sucedida, por decisão de produto.
  */
 internal class UpdatePreferences(private val store: UpdateStore) {
 
@@ -52,12 +52,6 @@ internal class UpdatePreferences(private val store: UpdateStore) {
 
     fun recordCheck(now: Long) {
         store.putLong(KEY_LAST_CHECK_AT, now)
-    }
-
-    fun lastPromptedVersion(): String? = store.getString(KEY_LAST_PROMPTED_VERSION)
-
-    fun markPrompted(version: String) {
-        store.putString(KEY_LAST_PROMPTED_VERSION, version)
     }
 
     fun dismissedVersion(): String? = store.getString(KEY_DISMISSED_VERSION)
