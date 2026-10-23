@@ -1,6 +1,6 @@
 # Meu Ponto — status atual e próximos passos
 
-_Atualizado em 23/10/2026. Versão publicada: `v0.6.1` (`versionCode 11`)._
+_Atualizado em 23/10/2026. Versão publicada: `v0.6.2` (`versionCode 12`)._
 
 Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
 
@@ -127,8 +127,15 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 - O cabeçalho do dia mostra o motivo em vermelho abaixo de “N comprovantes · Xh” e mantém o selo
   “Revisar”.
 - 16 testes novos (`WorkStatsCalculatorTest` e `DayIssueSummaryTest`): 108 no total, em 10 arquivos.
-- **Não validado no ambiente:** o Termux não tem Android SDK/Gradle; testes, lint e build precisam
-  rodar no PC ou no CI.
+- **Validado no CI:** execução manual do run `39946731205` passou testes, lint, APK e AAB.
+
+### 1.16 Release v0.6.2 — motivo do “Revisar” (23/10/2026)
+- `versionName` `0.6.2` / `versionCode` 12 no commit `a8c8ac2`.
+- Tag `v0.6.2` enviada; run `39947595930` concluído com sucesso.
+- Release publicada como **Latest**, com `Meu-Ponto-v0.6.2.apk` (42,4 MB) e
+  `app-play-release.aab` (21,7 MB).
+- Notas curadas aplicadas no GitHub com a seção **Novidades** para o banner do updater.
+- **Pendente:** confirmar no aparelho o banner/modal da `0.6.2` e o motivo no cabeçalho do dia.
 
 ---
 
@@ -157,15 +164,16 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 ### 3.0 Releases publicadas
 | Versão | Data | Estado | Assets | Assinatura |
 |---|---|---|---|---|
-| **`v0.6.1`** | 23/10/2026 08:29 UTC | **Latest** | `Meu-Ponto-v0.6.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| **`v0.6.2`** | 23/10/2026 11:47 UTC | **Latest** | `Meu-Ponto-v0.6.2.apk` (42,4 MB), `app-play-release.aab` (21,7 MB) | Keystore novo (`4ef464d5…`) |
+| `v0.6.1` | 23/10/2026 08:29 UTC | Anterior | `Meu-Ponto-v0.6.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.0` | 23/10/2026 08:09 UTC | Anterior | `Meu-Ponto-v0.6.0.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.5.1` | 23/10/2026 06:17 UTC | Anterior | `Meu-Ponto-v0.5.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.5.0` | 22/10/2026 16:19 UTC | Anterior | `Meu-Ponto-v0.5.0.apk` (44,5 MB), `app-play-release.aab` (22,8 MB) | Keystore novo (`4ef464d5…`) |
 | `v0.4.0` | 20/10/2026 | Anterior | `Meu-Ponto-v0.4.0.apk` (61 MB), **build debug** (debuggable) | Chave do runner (`2aa251…`) |
 | `v0.3.3` | 16/10/2026 | Anterior | `Meu-Ponto-v0.3.3.apk` | Chave do runner (`8f347d…`) |
 
-- Runs das tags `v0.5.1`, `v0.6.0` e `v0.6.1` concluídos com sucesso; releases marcados como **Latest** na época.
-- Efeito no updater: quem está na `0.6.0` recebe a `0.6.1` de teste; a atualização `0.5.0 → 0.5.1` já foi validada no aparelho.
+- Runs das tags `v0.5.1`, `v0.6.0`, `v0.6.1` e `v0.6.2` concluídos com sucesso; releases marcados como **Latest** na época.
+- Efeito no updater: quem está na `0.6.1` recebe a `0.6.2`; a atualização `0.5.0 → 0.5.1` e a instalação pelo próprio app já foram validadas no aparelho.
 
 ### 3.1 Keystore de distribuição (criado em 22/10/2026)
 - Arquivo: `C:\Users\jeanb\.meuponto\meu-ponto-release.jks` (fora do repo; `.gitignore` bloqueia `*.jks`).
@@ -238,7 +246,7 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 | P17 | Updater: instalação falha com assinatura diferente, e o erro aparece só depois do Play Protect | Usuário sem clareza sobre a migração | Mostrar mensagem de assinatura diferente antes de abrir o instalador (melhoria no updater) |
 | P18 | Editor de horário: ao digitar, o cursor voltava e os dígitos entravam fora de ordem (ex.: "22:34" em vez de "22:43") | Dados errados ao editar | **Corrigido e publicado na `v0.5.1`**: campo guarda o cursor e vai para o fim após a máscara |
 | P19 | Editor: "Só entrada" ou "Só saída" salvava também o outro horário (ex.: entrada e saída iguais para um comprovante só com horário) | Horas e pendências erradas | **Corrigido e publicado na `v0.5.1`**: só salva o tipo escolhido |
-| P20 | "Revisar" no cabeçalho do dia não explica o motivo (ex.: saída sem entrada no dia anterior). O aviso no card some ao salvar, mas o dia continua pendente | Usuário acha que não salvou | **Corrigido**: `WorkDayStats.issues` + cabeçalho mostra o motivo. Falta validar no CI/aparelho |
+| P20 | "Revisar" no cabeçalho do dia não explica o motivo (ex.: saída sem entrada no dia anterior). O aviso no card some ao salvar, mas o dia continua pendente | Usuário acha que não salvou | **Corrigido e publicado na `v0.6.2`**: `WorkDayStats.issues` + motivo no cabeçalho |
 
 ---
 
@@ -295,4 +303,4 @@ Checklist do release publicado: [`plano-release-v0.5.1.md`](plano-release-v0.5.1
 - Aceitar `allowBackup=false` (P6)?
 - Qual pessoa ou canal será o encarregado (LGPD)?
 - Manter o `v0.4.0` público, marcar como pré-release ou remover (P3)?
-- Validar visualmente o banner e o “O que há de novo” da `v0.6.1` no aparelho e planejar a próxima versão.
+- Validar visualmente o banner e o “O que há de novo” da `v0.6.2` no aparelho e planejar a próxima versão.
