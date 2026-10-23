@@ -21,6 +21,9 @@ sealed interface UpdateDownloadState {
     data object Idle : UpdateDownloadState
     data class Downloading(val progress: Float, val downloadedBytes: Long, val totalBytes: Long) : UpdateDownloadState
     data class ReadyToInstall(val apkFile: File) : UpdateDownloadState
+
+    /** APK baixado tem chave diferente da instalada; não deve ser aberto no instalador (P17). */
+    data object SignatureMismatch : UpdateDownloadState
     data class Error(val message: String) : UpdateDownloadState
 }
 
@@ -126,14 +129,17 @@ object AppUpdater {
      * Baixa o APK do release para `cacheDir/updates`.
      *
      * O GitHub responde com redirect para o CDN, por isso o laço de redirecionamento; o download vai
-     * para um `.tmp` e só vira o arquivo final ao terminar, evitando instalar APK truncado.
+     * para um `.tmp` e só vira o arquivo final ao terminar, evitando instalar APK truncado. Quando
+     * [expectedSha256] é informado, o `.tmp` só é promovido se o SHA-256 conferir; em divergência ele
+     * é apagado e o erro pede novo download.
      * O cache é limpo por [br.com.jean.meuponto.data.cleanupUpdateAndPdfCaches].
      */
     suspend fun downloadApk(
         context: Context,
         apkUrl: String,
         fileName: String,
-        onProgress: (progress: Float, downloaded: Long, total: Long) -> Unit
+        onProgress: (progress: Float, downloaded: Long, total: Long) -> Unit,
+        expectedSha256: String? = null
     ): File = withContext(Dispatchers.IO) {
         val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
         val targetFile = File(updatesDir, fileName)
@@ -191,6 +197,14 @@ object AppUpdater {
             }
         }
 
+        if (!expectedSha256.isNullOrBlank()) {
+            val actualSha256 = sha256OfFile(tempFile)
+            if (!sha256Matches(expectedSha256, actualSha256)) {
+                tempFile.delete()
+                throw IOException(CHECKSUM_MISMATCH_MESSAGE)
+            }
+        }
+
         if (targetFile.exists()) {
             targetFile.delete()
         }
@@ -200,6 +214,25 @@ object AppUpdater {
         }
 
         targetFile
+    }
+
+    /**
+     * Compara o certificado do APK baixado com o do app instalado antes de abrir o instalador (P17).
+     *
+     * [ApkSignatureStatus.UNKNOWN] cobre APK inválido, pacote instalado não encontrado e falha de
+     * leitura; nesse caso o fluxo segue, porque o Android ainda recusa a instalação se as chaves não
+     * forem compatíveis. [ApkSignatureStatus.DIFFERENT] é conclusivo e deve bloquear a instalação.
+     */
+    fun checkApkSignature(context: Context, apkFile: File): ApkSignatureStatus {
+        val installed = readInstalledCertificateHashes(context) ?: return ApkSignatureStatus.UNKNOWN
+        val downloaded = readApkCertificateHashes(context, apkFile) ?: return ApkSignatureStatus.UNKNOWN
+        if (installed.isEmpty() || downloaded.isEmpty()) return ApkSignatureStatus.UNKNOWN
+
+        return if (signaturesMatch(installed, downloaded)) {
+            ApkSignatureStatus.SAME
+        } else {
+            ApkSignatureStatus.DIFFERENT
+        }
     }
 
     fun canInstallUnknownApps(context: Context): Boolean {

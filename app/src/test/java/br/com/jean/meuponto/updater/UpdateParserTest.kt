@@ -10,11 +10,36 @@ class UpdateParserTest {
     private val releaseUrl =
         "https://github.com/eibragaa/meu-ponto-android/releases/tag/v0.5.2"
 
+    private val releaseNotesV051 = """
+        # Meu Ponto v0.5.1
+
+        ## Correções
+
+        - Turno noturno agora é pareado entre comprovantes e entre dias; a duração é creditada no dia da
+          entrada (P16).
+        - Editor de horário mantém o cursor e salva apenas o tipo escolhido ("Só entrada" ou "Só saída"),
+          evitando horários invertidos e batidas duplicadas (P18/P19).
+        - Duração de jornada unificada, com o mesmo teto de 16 horas para comprovante único e para
+          comprovantes separados.
+
+        ## Interno
+
+        - Código reorganizado em `domain/`, `data/`, `ui/` e `updater/`.
+        - 35 testes unitários cobrindo cálculo de horas, máscaras, formatação e comparação de versão.
+        - Padrão de engenharia e documentação do projeto atualizados.
+
+        ## Observações
+
+        - Esta versão ainda não inclui as melhorias de teclado no editor (E1) nem o motivo detalhado do
+          "Revisar" (E3); elas ficam para a próxima versão.
+    """.trimIndent()
+
     private fun apk(
         name: String = "Meu-Ponto-0.5.2.apk",
         url: String = "https://example.com/$name",
-        size: Long = 1024L
-    ) = ApkAsset(name = name, downloadUrl = url, size = size)
+        size: Long = 1024L,
+        digest: String = ""
+    ) = ApkAsset(name = name, downloadUrl = url, size = size, digest = digest)
 
     private fun release(
         tag: String = "v0.5.2",
@@ -42,6 +67,26 @@ class UpdateParserTest {
         assertEquals("Meu-Ponto-0.5.2.apk", info.apkFileName)
         assertEquals(1024L, info.apkSize)
         assertEquals(releaseUrl, info.releaseUrl)
+    }
+
+    @Test
+    fun `release propaga o digest publicado do apk`() {
+        val digest = "sha256:" + "a".repeat(64)
+        val result = evaluateRelease(
+            release(assets = listOf(apk(digest = digest))),
+            currentVersion = "0.5.1"
+        )
+
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals(digest, info.apkDigest)
+    }
+
+    @Test
+    fun `release sem digest deixa o campo vazio`() {
+        val result = evaluateRelease(release(), currentVersion = "0.5.1")
+
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals("", info.apkDigest)
     }
 
     @Test
@@ -164,10 +209,47 @@ class UpdateParserTest {
     }
 
     @Test
-    fun `resume notas usando a primeira linha util sem markdown`() {
-        val notes = "\n\n## Correções\n- item importante"
+    fun `resume a v0 5 1 comecando pelo turno noturno`() {
+        val summary = summarizeReleaseNotes(releaseNotesV051)
 
-        assertEquals("Correções", summarizeReleaseNotes(notes))
+        assertEquals(
+            "Turno noturno agora é pareado entre comprovantes e entre dias; a duração é creditada no dia da",
+            summary
+        )
+    }
+
+    @Test
+    fun `resume ignora titulo nome do release e cabecalho de secao`() {
+        val notes = """
+            # Meu Ponto v0.5.1
+            Meu Ponto v0.5.1
+
+            ## Correções
+
+            - Item importante
+        """.trimIndent()
+
+        assertEquals("Item importante", summarizeReleaseNotes(notes))
+    }
+
+    @Test
+    fun `resume ignora todos os cabecalhos de secao conhecidos`() {
+        val headers = listOf(
+            "Correções",
+            "Correcoes",
+            "Novidades",
+            "Interno",
+            "Observações",
+            "Observacoes"
+        )
+
+        headers.forEach { header ->
+            assertEquals(
+                "Item relevante",
+                summarizeReleaseNotes("$header\n\n- Item relevante"),
+                "cabeçalho: $header"
+            )
+        }
     }
 
     @Test
@@ -186,9 +268,10 @@ class UpdateParserTest {
     }
 
     @Test
-    fun `resume devolve vazio para notas em branco`() {
+    fun `resume devolve vazio para notas em branco ou so titulo`() {
         assertEquals("", summarizeReleaseNotes(""))
         assertEquals("", summarizeReleaseNotes("\n \n"))
+        assertEquals("", summarizeReleaseNotes("# Meu Ponto v0.5.1\n\nv0.5.1"))
         assertEquals("", summarizeReleaseNotes("texto", maxChars = 0))
     }
 }

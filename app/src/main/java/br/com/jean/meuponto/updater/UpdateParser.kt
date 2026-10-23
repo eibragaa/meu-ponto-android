@@ -2,6 +2,7 @@ package br.com.jean.meuponto.updater
 
 import org.json.JSONException
 import org.json.JSONObject
+import java.text.Normalizer
 
 /** Limite de caracteres das notas guardadas/exibidas; evita releases gigantes na UI. */
 internal const val MAX_RELEASE_NOTES_CHARS = 4_000
@@ -17,7 +18,8 @@ private const val HTTP_SERVER_ERROR_MAX = 599
 internal data class ApkAsset(
     val name: String,
     val downloadUrl: String,
-    val size: Long
+    val size: Long,
+    val digest: String = ""
 )
 
 /** Campos da release usados pelo updater, já separados do JSON. */
@@ -50,7 +52,11 @@ internal fun parseLatestRelease(json: String): ReleasePayload? {
             ApkAsset(
                 name = name,
                 downloadUrl = asset.optString("browser_download_url", "").trim(),
-                size = asset.optLong("size", 0L)
+                size = asset.optLong("size", 0L),
+                digest = asset.optString("digest", "")
+                    .trim()
+                    .takeUnless { it.equals("null", ignoreCase = true) }
+                    .orEmpty()
             )
         }
 
@@ -99,7 +105,8 @@ internal fun evaluateRelease(payload: ReleasePayload, currentVersion: String): U
             apkUrl = apk.downloadUrl,
             apkFileName = apk.name,
             apkSize = apk.size,
-            releaseUrl = payload.releaseUrl
+            releaseUrl = payload.releaseUrl,
+            apkDigest = apk.digest
         )
     )
 }
@@ -119,23 +126,67 @@ internal fun failureForHttpStatus(status: Int): UpdateFailure = when (status) {
 /** `true` quando o GitHub respondeu que não há release publicada (HTTP 404). */
 internal fun isReleaseMissingStatus(status: Int): Boolean = status == HTTP_NOT_FOUND
 
+/** Linha candidata a resumo; [isBullet] prioriza itens de correção/novidade sobre texto solto. */
+private data class SummaryCandidate(val text: String, val isBullet: Boolean)
+
+/** Nome/versão do release usado como título solto nas notas (ex.: `Meu Ponto v0.5.1`). */
+private val RELEASE_NAME_LINE = Regex(
+    """^(?:meu\s+ponto\s*[:\-–—]?\s*)?v?\d+(?:\.\d+)*(?:[-+][\w.-]+)?$""",
+    RegexOption.IGNORE_CASE
+)
+
 /**
- * Resume as notas para o banner: primeira linha útil, sem marcação de Markdown básica.
+ * Cabeçalhos de seção que não dizem nada ao usuário no banner.
  *
- * Linhas em branco e títulos vazios são ignorados. Texto acima de [maxChars] é cortado com reticências.
+ * A comparação é sem acento e sem diferenciar maiúsculas para aceitar "Correções" e "Correcoes".
+ */
+private val KNOWN_SECTION_HEADERS = setOf("correcoes", "novidades", "interno", "observacoes")
+
+private val BULLET_PREFIX = Regex("""^(?:[-*+•]|\d+[.)])\s+""")
+private val DIACRITICS = Regex("\\p{Mn}+")
+
+/**
+ * Resume as notas para o banner: primeira linha útil, de preferência um item de lista.
+ *
+ * Ignora títulos Markdown (`#...`), o nome/versão do release e cabeçalhos de seção conhecidos;
+ * remove marcação básica de lista/negrito. Texto acima de [maxChars] é cortado com reticências.
  */
 internal fun summarizeReleaseNotes(notes: String, maxChars: Int = 120): String {
     if (maxChars <= 0) return ""
 
-    val firstLine = notes.lineSequence()
-        .map(::stripBasicMarkdown)
-        .firstOrNull { it.isNotBlank() }
+    val candidates = notes.lineSequence()
+        .mapNotNull(::summaryCandidate)
+        .toList()
+
+    val summary = candidates.firstOrNull { it.isBullet }?.text
+        ?: candidates.firstOrNull()?.text
         ?: return ""
 
-    if (firstLine.length <= maxChars) return firstLine
+    if (summary.length <= maxChars) return summary
     if (maxChars == 1) return "…"
-    return firstLine.take(maxChars - 1).trimEnd() + "…"
+    return summary.take(maxChars - 1).trimEnd() + "…"
 }
+
+private fun summaryCandidate(rawLine: String): SummaryCandidate? {
+    val trimmed = rawLine.trim()
+    if (trimmed.isBlank() || trimmed.startsWith("#")) return null
+
+    val text = stripBasicMarkdown(trimmed)
+    if (text.isBlank()) return null
+    if (RELEASE_NAME_LINE.matches(text)) return null
+    if (isKnownSectionHeader(text)) return null
+
+    return SummaryCandidate(text = text, isBullet = BULLET_PREFIX.containsMatchIn(trimmed))
+}
+
+private fun isKnownSectionHeader(text: String): Boolean {
+    val normalized = stripDiacritics(text.trim().trimEnd(':'))
+        .lowercase()
+    return normalized in KNOWN_SECTION_HEADERS
+}
+
+private fun stripDiacritics(text: String): String =
+    Normalizer.normalize(text, Normalizer.Form.NFD).replace(DIACRITICS, "")
 
 private fun stripBasicMarkdown(line: String): String {
     return line.trim()
