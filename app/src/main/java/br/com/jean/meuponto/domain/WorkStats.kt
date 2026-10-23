@@ -156,9 +156,11 @@ object WorkStatsCalculator {
                     if (worked != null) minutes += worked else issues += DayIssue.IMPLAUSIBLE_SHIFT
                 }
             }
-            // "Marcado para revisão" é o motivo genérico: só aparece quando não há um mais específico,
-            // para o cabeçalho não repetir a mesma dúvida em duas linhas.
-            if (issues.isEmpty() && dayReceipts.any { it.needsReview && it.occurrence == null }) {
+            // "Marcado para revisão" só vale para comprovante **sem horário legível**: aí o dia não
+            // tem outro motivo para explicar a pendência. Com horário lido, o motivo específico
+            // (batida sem par, sem tipo, jornada implausível) já descreve o que falta — repetir a
+            // marcação genérica só mantinha o selo "Revisar" aceso depois da correção.
+            if (dayReceipts.any { it.needsReview && it.occurrence == null && !it.hasReadablePunch() }) {
                 issues += DayIssue.MARKED_FOR_REVIEW
             }
             WorkDayStats(
@@ -317,17 +319,37 @@ object WorkStatsCalculator {
                 else -> listOfNotNull(parseClockTime(receipt.workTime)?.let { it to PunchKind.UNKNOWN })
             }
             kinds.forEach { (time, kind) ->
-                when {
-                    // Data não reconhecida: o motivo (UNKNOWN_DATE) é do dia, marcado em dayStats.
-                    date == null -> Unit
-                    kind == PunchKind.UNKNOWN -> report(key, DayIssue.UNTYPED_PUNCH)
-                    else -> dated += Punch(key, date.atTime(time), kind)
-                }
+                // Data não reconhecida: o motivo (UNKNOWN_DATE) é do dia, marcado em dayStats.
+                if (date != null) dated += Punch(key, date.atTime(time), kind)
+            }
+        }
+
+        // Batida sem tipo (OCR leu só um horário) só vira entrada/saída quando o dia não deixa
+        // dúvida: há exatamente uma batida tipada e a sem tipo está do lado oposto no relógio.
+        // Assim "entrada 08:00 + horário solto 18:30" fecha o dia sem obrigar o usuário a editar.
+        // Com duas batidas sem tipo, ou sem batida tipada, o dia fica pendente para o usuário escolher.
+        val untypedByDay = dated.filter { it.kind == PunchKind.UNKNOWN }.groupBy { it.key }
+        val typed = dated.filter { it.kind != PunchKind.UNKNOWN }
+        val resolvedUntyped = mutableListOf<Punch>()
+        untypedByDay.forEach { (key, untypedOfDay) ->
+            val typedOfDay = typed.filter { it.key == key }
+            val unknown = untypedOfDay.singleOrNull()
+            val typedPunch = typedOfDay.singleOrNull()
+            val inferred = when {
+                unknown == null || typedPunch == null -> null
+                typedPunch.kind == PunchKind.ENTRY && unknown.at.isAfter(typedPunch.at) -> PunchKind.EXIT
+                typedPunch.kind == PunchKind.EXIT && unknown.at.isBefore(typedPunch.at) -> PunchKind.ENTRY
+                else -> null
+            }
+            if (inferred != null) {
+                resolvedUntyped += unknown.copy(kind = inferred)
+            } else {
+                untypedOfDay.forEach { report(it.key, DayIssue.UNTYPED_PUNCH) }
             }
         }
 
         val open = ArrayDeque<Punch>()
-        dated.sortedWith(compareBy<Punch> { it.at }.thenBy { if (it.kind == PunchKind.ENTRY) 0 else 1 })
+        (typed + resolvedUntyped).sortedWith(compareBy<Punch> { it.at }.thenBy { if (it.kind == PunchKind.ENTRY) 0 else 1 })
             .forEach { punch ->
                 when (punch.kind) {
                     PunchKind.ENTRY -> open.addLast(punch)
@@ -360,6 +382,12 @@ object WorkStatsCalculator {
 
         return PairResult(minutesByDate, issuesByDate)
     }
+
+    /** `true` quando o comprovante não tem nenhum horário que o pareamento consiga usar. */
+    private fun Receipt.hasReadablePunch(): Boolean =
+        parseClockTime(entryTime) != null ||
+            parseClockTime(exitTime) != null ||
+            parseClockTime(workTime) != null
 
     private fun countWorkdays(start: LocalDate, end: LocalDate, daysOff: Set<LocalDate>): Int {
         if (end.isBefore(start)) return 0

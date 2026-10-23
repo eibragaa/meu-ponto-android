@@ -336,34 +336,83 @@ class WorkStatsCalculatorTest {
     @Test
     fun `comprovante marcado para revisao sem outro motivo`() {
         val days = WorkStatsCalculator.dayStats(
-            listOf(receipt(entry = "08:00", exit = "17:00", needsReview = true))
+            listOf(receipt(needsReview = true))
         )
 
         assertEquals(listOf(DayIssue.MARKED_FOR_REVIEW), days.getValue("22/10/2026").issues)
     }
 
     @Test
-    fun `motivo especifico substitui a marcacao generica`() {
+    fun `marcacao de revisao convive com o motivo da batida`() {
         val days = WorkStatsCalculator.dayStats(
-            listOf(receipt(entry = "08:00", needsReview = true))
+            listOf(receipt(entry = "08:00"), receipt(needsReview = true))
         )
 
-        assertEquals(listOf(DayIssue.MISSING_EXIT), days.getValue("22/10/2026").issues)
+        // Sem a marcação o dia continuaria pendente sem dizer que há comprovante para abrir.
+        assertEquals(
+            listOf(DayIssue.MISSING_EXIT, DayIssue.MARKED_FOR_REVIEW),
+            days.getValue("22/10/2026").issues
+        )
     }
 
     @Test
     fun `motivos ficam em ordem de prioridade`() {
         val days = WorkStatsCalculator.dayStats(
             listOf(
-                receipt(date = "22/10/2026", entry = "08:00", needsReview = true),
-                receipt(date = "22/10/2026", workTime = "22:43")
+                receipt(date = "22/10/2026", entry = "08:00"),
+                receipt(date = "22/10/2026", workTime = "12:00"),
+                receipt(date = "22/10/2026", workTime = "22:43"),
+                receipt(date = "22/10/2026", needsReview = true)
             )
         )
 
         assertEquals(
-            listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MISSING_EXIT),
+            listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MISSING_EXIT, DayIssue.MARKED_FOR_REVIEW),
             days.getValue("22/10/2026").issues
         )
+    }
+
+    @Test
+    fun `horario sem tipo fecha o dia quando so ha uma batida tipada`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "22/10/2026", entry = "08:00"),
+                receipt(date = "22/10/2026", workTime = "18:30")
+            )
+        )
+
+        val day = days.getValue("22/10/2026")
+        assertEquals(630, day.minutes)
+        assertFalse(day.pending)
+    }
+
+    @Test
+    fun `horario sem tipo antes da entrada continua pendente`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "22/10/2026", entry = "08:00"),
+                receipt(date = "22/10/2026", workTime = "07:00")
+            )
+        )
+
+        val day = days.getValue("22/10/2026")
+        assertEquals(0, day.minutes)
+        assertEquals(listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MISSING_EXIT), day.issues)
+    }
+
+    @Test
+    fun `dois horarios sem tipo continuam pendentes`() {
+        val days = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(date = "22/10/2026", entry = "08:00"),
+                receipt(date = "22/10/2026", workTime = "12:00"),
+                receipt(date = "22/10/2026", workTime = "18:00")
+            )
+        )
+
+        val day = days.getValue("22/10/2026")
+        assertEquals(0, day.minutes)
+        assertEquals(listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MISSING_EXIT), day.issues)
     }
 
     @Test
