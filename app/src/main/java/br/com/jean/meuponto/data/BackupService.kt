@@ -169,7 +169,7 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
                         WorkStatsCalculator.parseWorkDate(item.getString("workDate")) == null,
                     // Backups antigos não têm o campo: ficam sem ocorrência (comprovante normal).
                     occurrence = item.optString("occurrence").takeIf { it.isNotBlank() }
-                        ?.let { DayOccurrence.valueOf(it) }
+                        ?.let { runCatching { DayOccurrence.valueOf(it) }.getOrNull() }
                 )
                 val alreadyRestored = dao.getByCapturedAt(candidate.capturedAt).any { existing ->
                     existing.workDate == candidate.workDate &&
