@@ -1,6 +1,6 @@
 # Meu Ponto — status atual e próximos passos
 
-_Atualizado em 23/10/2026. Versão publicada: `v0.6.5` (`versionCode 15`)._
+_Atualizado em 26/10/2026. Versão publicada: `v0.6.5` (`versionCode 15`). Versão preparada: `v0.6.6` (`versionCode 16`).
 
 Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
 
@@ -193,6 +193,19 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
   `marcacao de revisao convive com o motivo da batida`, `horario sem tipo antes da entrada...`).
 - `versionName` `0.6.5` / `versionCode` 15 no commit `d76b2e7`; tag `v0.6.5`; run `39988836374`.
 
+### 1.22 Correção do "Revisar" preso em batida única (26/10/2026)
+- **Causa raiz:** uma batida só já classificada ("Só entrada" ou "Só saída") mantinha o dia pendente
+  (`MISSING_EXIT`/`MISSING_ENTRY`) no `pairPunches`. Resultado: o selo "Revisar" e o filtro
+  continuavam acesos mesmo depois de o comprovante ser corrigido — exatamente o sintoma que sobrou do
+  P20 ("o aviso no card some ao salvar, mas o dia continua pendente").
+- **Correção em `WorkStatsCalculator.pairPunches`:** uma batida sozinha não gera mais motivo de
+  pendência; o par pode chegar depois, em outro comprovante. A pendência de batida esquecida agora só
+  aparece quando uma batida fica sem par dentro do teto de 16h (ex.: entrada 08:00 de um dia e saída
+  09:00 do dia seguinte).
+- Testes atualizados (`WorkStatsCalculatorTest`, `DayOccurrenceTest`) para o novo comportamento; o
+  caso de >16h continua pendente nos dois dias.
+- **Não compilado/testado localmente:** sem Android SDK/Gradle no Termux (regra 10 do AGENTS.md).
+
 ---
 
 ## 2. Estado atual do código
@@ -316,9 +329,9 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
   commit: `d76b2e7`.
 - Release `v0.6.5` é a **Latest**; cópia local do APK em `~/meu-ponto-apk/Meu-Ponto-v0.6.5.apk`.
 - **Em aberto, em ordem sugerida:**
-  1. Descobrir o comprovante que ainda mantém o "Revisar" em dias já corrigidos: exportar backup
-     **sem senha** e abrir o `manifest.json` (o ADB não lê o banco: build `user`, app não debuggable,
-     sem root). O pedido do dono é para validar isso com os dados reais.
+  1. ~~Descobrir o comprovante que ainda mantém o "Revisar" em dias já corrigidos~~ — **resolvido em
+     código (26/10/2026, seção 1.22)**: batida única classificada não deixa mais o dia pendente.
+     Falta validar no aparelho com os dados reais.
   2. Gerar e commitar `app/schemas/.../3.json` — exige build com Android SDK ou `gh auth refresh -s workflow`
      para publicar o schema como artefato no CI.
   3. QA no aparelho: editor, migração real 2→3, swipe, ícone/splash, teclado e aviso de atualização.
