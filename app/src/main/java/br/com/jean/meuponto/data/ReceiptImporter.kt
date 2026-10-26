@@ -10,6 +10,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -26,7 +27,7 @@ import kotlinx.coroutines.withContext
  */
 internal fun copyToPrivateStorage(context: Context, uri: Uri): File {
     val dir = File(context.filesDir, "receipts").apply { mkdirs() }
-    val file = File(dir, "comprovante_${System.currentTimeMillis()}.jpg")
+    val file = File(dir, "comprovante_${System.currentTimeMillis()}_${UUID.randomUUID()}.jpg")
     context.contentResolver.openInputStream(uri).use { input -> file.outputStream().use { output -> input?.copyTo(output) ?: error("Arquivo vazio") } }
     return file
 }
