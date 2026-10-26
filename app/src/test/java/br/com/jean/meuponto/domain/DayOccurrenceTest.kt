@@ -38,8 +38,8 @@ class DayOccurrenceTest {
 
         assertEquals(0, days.getValue("22/10/2026").minutes)
         assertFalse(days.getValue("22/10/2026").pending)
-        // A saída de 23/10 não tem entrada aberta para parear: fica pendente no próprio dia.
-        assertEquals(listOf(DayIssue.MISSING_ENTRY), days.getValue("23/10/2026").issues)
+        // A saída de 23/10 fica sozinha, esperando a entrada que ainda não foi registrada.
+        assertFalse(days.getValue("23/10/2026").pending)
     }
 
     @Test
@@ -98,16 +98,18 @@ class DayOccurrenceTest {
 
     @Test
     fun `filtro revisar traz os comprovantes de dias pendentes e os marcados`() {
-        val entryOnly = receipt(date = "22/10/2026", entry = "08:00")
-        val absentSameDay = receipt(date = "22/10/2026", occurrence = DayOccurrence.ABSENCE)
-        val complete = receipt(date = "21/10/2026", entry = "08:00", exit = "17:00")
-        val marked = receipt(date = "20/10/2026", exit = "17:00", needsReview = true)
+        // Dia pendente de verdade: entrada 08:00 em 21/10 e saída 09:00 em 22/10 (25h → batida esquecida).
+        val staleEntry = receipt(date = "21/10/2026", entry = "08:00")
+        val staleExit = receipt(date = "22/10/2026", exit = "09:00")
+        val complete = receipt(date = "20/10/2026", entry = "08:00", exit = "17:00")
+        val marked = receipt(date = "19/10/2026", exit = "17:00", needsReview = true)
 
         val result = WorkStatsCalculator.receiptsNeedingReview(
-            listOf(entryOnly, absentSameDay, complete, marked)
+            listOf(staleEntry, staleExit, complete, marked)
         )
 
-        assertEquals(listOf(entryOnly, absentSameDay, marked), result)
+        // Os dois comprovantes do turno esquecido ficam em dias pendentes; o marcado entra sozinho.
+        assertEquals(listOf(staleEntry, staleExit, marked), result)
     }
 
     @Test

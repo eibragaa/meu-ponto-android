@@ -27,10 +27,10 @@ enum class DayIssue {
     /** O comprovante tem um horário solto, sem indicar se é entrada ou saída. */
     UNTYPED_PUNCH,
 
-    /** Há uma entrada sem saída correspondente dentro do teto de 16h. */
+    /** Há uma entrada que não encontrou saída dentro do teto de 16h — batida de saída esquecida. */
     MISSING_EXIT,
 
-    /** Há uma saída sem entrada anterior. */
+    /** Há uma saída que não encontrou entrada dentro do teto de 16h — batida de entrada esquecida. */
     MISSING_ENTRY,
 
     /** O comprovante foi marcado para revisão ([Receipt.needsReview]), sem motivo mais específico. */
@@ -138,9 +138,11 @@ object WorkStatsCalculator {
      * 2. comprovante com apenas uma das batidas -> pareamento cronológico em [pairPunches], que
      *    credita a duração no dia da *entrada* (turno noturno conta no dia em que começou).
      *
-     * O dia fica com [WorkDayStats.pending] quando há pelo menos um [DayIssue]: batida não pareada,
-     * comprovante marcado para revisão ([Receipt.needsReview]) ou data desconhecida
-     * ([REVIEW_DATE_KEY]). O motivo fica em [WorkDayStats.issues] para a UI explicar o "Revisar".
+     * O dia fica com [WorkDayStats.pending] quando há pelo menos um [DayIssue]: jornada implausível,
+     * batida sem tipo, batida esquecida (sem par dentro do teto de 16h), comprovante marcado para
+     * revisão ([Receipt.needsReview]) ou data desconhecida ([REVIEW_DATE_KEY]). O motivo fica em
+     * [WorkDayStats.issues] para a UI explicar o "Revisar". Uma batida só já classificada (só entrada
+     * ou só saída) **não** é pendência: o par pode chegar depois, em outro comprovante.
      */
     fun dayStats(receipts: List<Receipt>): Map<String, WorkDayStats> {
         val paired = pairPunches(receipts)
@@ -295,6 +297,11 @@ object WorkStatsCalculator {
      * somados por [durationMinutes] em [dayStats], o que evita contar a mesma jornada duas vezes.
      * Comprovantes com [Receipt.occurrence] também ficam de fora: a batida esquecida não pode ser
      * pareada com uma batida de outro dia.
+     *
+     * Uma batida sozinha (entrada sem saída, ou saída sem entrada) **não** vira pendência por si: a
+     * batida que falta pode chegar depois, em outro comprovante. Só quando uma batida fica sem par
+     * dentro de [MAX_SHIFT_MINUTES] é que vira [DayIssue.MISSING_EXIT]/[DayIssue.MISSING_ENTRY]
+     * (batida esquecida).
      */
     private fun pairPunches(receipts: List<Receipt>): PairResult {
         val minutesByDate = mutableMapOf<String, Int>()
@@ -356,14 +363,19 @@ object WorkStatsCalculator {
                     PunchKind.EXIT -> {
                         // Entrada aberta há mais de 16h é considerada esquecida: não pareia e deixa
                         // o dia daquela entrada pendente, em vez de creditar uma jornada irreal.
+                        var hadStaleEntry = false
                         while (open.isNotEmpty() &&
                             Duration.between(open.first().at, punch.at).toMinutes() > MAX_SHIFT_MINUTES
                         ) {
                             report(open.removeFirst().key, DayIssue.MISSING_EXIT)
+                            hadStaleEntry = true
                         }
                         val entry = open.removeFirstOrNull()
                         if (entry == null) {
-                            report(punch.key, DayIssue.MISSING_ENTRY)
+                            // Saída sozinha não é pendência: a entrada pode chegar em outro
+                            // comprovante depois. Só vira "saída sem entrada" quando havia uma entrada
+                            // que expirou (>16h), o que indica a batida intermediária esquecida.
+                            if (hadStaleEntry) report(punch.key, DayIssue.MISSING_ENTRY)
                         } else {
                             val worked = Duration.between(entry.at, punch.at).toMinutes().toInt()
                             if (worked > 0) {
@@ -378,7 +390,6 @@ object WorkStatsCalculator {
                     PunchKind.UNKNOWN -> report(punch.key, DayIssue.UNTYPED_PUNCH)
                 }
             }
-        open.forEach { report(it.key, DayIssue.MISSING_EXIT) }
 
         return PairResult(minutesByDate, issuesByDate)
     }

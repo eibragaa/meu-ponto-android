@@ -51,13 +51,13 @@ class WorkStatsCalculatorTest {
     }
 
     @Test
-    fun `marca batida unica como pendente`() {
+    fun `batida unica classificada nao deixa o dia pendente`() {
         val days = WorkStatsCalculator.dayStats(
             listOf(receipt(entry = "08:00"))
         )
 
         assertEquals(0, days.getValue("22/10/2026").minutes)
-        assertTrue(days.getValue("22/10/2026").pending)
+        assertFalse(days.getValue("22/10/2026").pending)
     }
 
     @Test
@@ -142,13 +142,13 @@ class WorkStatsCalculatorTest {
     }
 
     @Test
-    fun `saida sem entrada anterior fica pendente`() {
+    fun `saida unica classificada nao deixa o dia pendente`() {
         val days = WorkStatsCalculator.dayStats(
             listOf(receipt(date = "22/10/2026", exit = "06:57"))
         )
 
         assertEquals(0, days.getValue("22/10/2026").minutes)
-        assertTrue(days.getValue("22/10/2026").pending)
+        assertFalse(days.getValue("22/10/2026").pending)
     }
 
     @Test
@@ -289,21 +289,21 @@ class WorkStatsCalculatorTest {
     }
 
     @Test
-    fun `saida sem entrada informa o motivo`() {
+    fun `saida sem entrada nao gera motivo enquanto o par nao chega`() {
         val days = WorkStatsCalculator.dayStats(
             listOf(receipt(date = "22/10/2026", exit = "06:57"))
         )
 
-        assertEquals(listOf(DayIssue.MISSING_ENTRY), days.getValue("22/10/2026").issues)
+        assertEquals(emptyList<DayIssue>(), days.getValue("22/10/2026").issues)
     }
 
     @Test
-    fun `entrada sem saida informa o motivo`() {
+    fun `entrada sem saida nao gera motivo enquanto o par nao chega`() {
         val days = WorkStatsCalculator.dayStats(
             listOf(receipt(date = "22/10/2026", entry = "22:43"))
         )
 
-        assertEquals(listOf(DayIssue.MISSING_EXIT), days.getValue("22/10/2026").issues)
+        assertEquals(emptyList<DayIssue>(), days.getValue("22/10/2026").issues)
     }
 
     @Test
@@ -343,14 +343,14 @@ class WorkStatsCalculatorTest {
     }
 
     @Test
-    fun `marcacao de revisao convive com o motivo da batida`() {
+    fun `marcacao de revisao nao repete motivo de batida sozinha`() {
         val days = WorkStatsCalculator.dayStats(
             listOf(receipt(entry = "08:00"), receipt(needsReview = true))
         )
 
-        // Sem a marcação o dia continuaria pendente sem dizer que há comprovante para abrir.
+        // A batida sozinha não é pendência; só o comprovante marcado pede revisão.
         assertEquals(
-            listOf(DayIssue.MISSING_EXIT, DayIssue.MARKED_FOR_REVIEW),
+            listOf(DayIssue.MARKED_FOR_REVIEW),
             days.getValue("22/10/2026").issues
         )
     }
@@ -367,7 +367,7 @@ class WorkStatsCalculatorTest {
         )
 
         assertEquals(
-            listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MISSING_EXIT, DayIssue.MARKED_FOR_REVIEW),
+            listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MARKED_FOR_REVIEW),
             days.getValue("22/10/2026").issues
         )
     }
@@ -397,7 +397,7 @@ class WorkStatsCalculatorTest {
 
         val day = days.getValue("22/10/2026")
         assertEquals(0, day.minutes)
-        assertEquals(listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MISSING_EXIT), day.issues)
+        assertEquals(listOf(DayIssue.UNTYPED_PUNCH), day.issues)
     }
 
     @Test
@@ -412,7 +412,7 @@ class WorkStatsCalculatorTest {
 
         val day = days.getValue("22/10/2026")
         assertEquals(0, day.minutes)
-        assertEquals(listOf(DayIssue.UNTYPED_PUNCH, DayIssue.MISSING_EXIT), day.issues)
+        assertEquals(listOf(DayIssue.UNTYPED_PUNCH), day.issues)
     }
 
     @Test
