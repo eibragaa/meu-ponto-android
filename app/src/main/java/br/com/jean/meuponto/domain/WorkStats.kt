@@ -4,7 +4,6 @@ import br.com.jean.meuponto.data.Receipt
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.ResolverStyle
@@ -76,7 +75,7 @@ const val REVIEW_DATE_KEY = "revisar"
 /**
  * Regras de jornada do app: pareamento de batidas, horas por dia e resumo do período.
  *
- * Regra central (ver [pairPunches]): entrada e saída podem vir em comprovantes diferentes, inclusive
+ * Regra central (ver [PunchPairing]): entrada e saída podem vir em comprovantes diferentes, inclusive
  * em dias diferentes (turno noturno). O pareamento é cronológico e uma entrada só é pareada com a
  * primeira saída posterior dentro de [MAX_SHIFT_MINUTES].
  *
@@ -135,7 +134,7 @@ object WorkStatsCalculator {
      *
      * Duas origens de minutos, sem sobreposição:
      * 1. comprovante com entrada e saída no mesmo registro -> [durationMinutes];
-     * 2. comprovante com apenas uma das batidas -> pareamento cronológico em [pairPunches], que
+     * 2. comprovante com apenas uma das batidas -> pareamento cronológico em [PunchPairing], que
      *    credita a duração no dia da *entrada* (turno noturno conta no dia em que começou).
      *
      * O dia fica com [WorkDayStats.pending] quando há pelo menos um [DayIssue]: jornada implausível,
@@ -143,33 +142,19 @@ object WorkStatsCalculator {
      * revisão ([Receipt.needsReview]) ou data desconhecida ([REVIEW_DATE_KEY]). O motivo fica em
      * [WorkDayStats.issues] para a UI explicar o "Revisar". Uma batida só já classificada (só entrada
      * ou só saída) **não** é pendência: o par pode chegar depois, em outro comprovante.
+     *
+     * Minutos e pendências vêm do mesmo passe de [PunchPairing.pair] que alimenta [journeys]: a UI
+     * nunca mostra horas de um cálculo e jornadas de outro.
      */
     fun dayStats(receipts: List<Receipt>): Map<String, WorkDayStats> {
-        val paired = pairPunches(receipts)
+        val paired = PunchPairing.pair(receipts)
         return receipts.groupBy { it.workDate.ifBlank { REVIEW_DATE_KEY } }.mapValues { (date, dayReceipts) ->
-            var minutes = paired.minutesByDate[date] ?: 0
-            val issues = paired.issuesByDate[date].orEmpty().toMutableSet()
-            dayReceipts.forEach { receipt ->
-                if (parseWorkDate(receipt.workDate) == null) issues += DayIssue.UNKNOWN_DATE
-                // Comprovante com ocorrência já está resolvido: não soma horas nem gera motivo.
-                if (receipt.occurrence != null) return@forEach
-                if (parseClockTime(receipt.entryTime) != null && parseClockTime(receipt.exitTime) != null) {
-                    val worked = durationMinutes(receipt.entryTime, receipt.exitTime)
-                    if (worked != null) minutes += worked else issues += DayIssue.IMPLAUSIBLE_SHIFT
-                }
-            }
-            // "Marcado para revisão" só vale para comprovante **sem horário legível**: aí o dia não
-            // tem outro motivo para explicar a pendência. Com horário lido, o motivo específico
-            // (batida sem par, sem tipo, jornada implausível) já descreve o que falta — repetir a
-            // marcação genérica só mantinha o selo "Revisar" aceso depois da correção.
-            if (dayReceipts.any { it.needsReview && it.occurrence == null && !it.hasReadablePunch() }) {
-                issues += DayIssue.MARKED_FOR_REVIEW
-            }
             WorkDayStats(
                 date = date,
-                minutes = minutes,
+                minutes = paired.minutesByDate[date] ?: 0,
                 receiptCount = dayReceipts.size,
-                issues = issues.sorted(),
+                issues = paired.issuesByDate[date].orEmpty().sorted(),
+                // Comprovante com ocorrência não soma horas nem gera motivo; a ocorrência aparece no dia.
                 occurrences = dayReceipts.mapNotNull { it.occurrence }.distinct().sorted()
             )
         }
@@ -290,116 +275,6 @@ object WorkStatsCalculator {
         return date.dayOfWeek != DayOfWeek.SATURDAY && date.dayOfWeek != DayOfWeek.SUNDAY
     }
 
-    /**
-     * Pareia batidas soltas (uma por comprovante) em ordem cronológica.
-     *
-     * Comprovantes que já trazem entrada e saída no mesmo registro são ignorados aqui: eles são
-     * somados por [durationMinutes] em [dayStats], o que evita contar a mesma jornada duas vezes.
-     * Comprovantes com [Receipt.occurrence] também ficam de fora: a batida esquecida não pode ser
-     * pareada com uma batida de outro dia.
-     *
-     * Uma batida sozinha (entrada sem saída, ou saída sem entrada) **não** vira pendência por si: a
-     * batida que falta pode chegar depois, em outro comprovante. Só quando uma batida fica sem par
-     * dentro de [MAX_SHIFT_MINUTES] é que vira [DayIssue.MISSING_EXIT]/[DayIssue.MISSING_ENTRY]
-     * (batida esquecida).
-     */
-    private fun pairPunches(receipts: List<Receipt>): PairResult {
-        val minutesByDate = mutableMapOf<String, Int>()
-        val issuesByDate = mutableMapOf<String, MutableSet<DayIssue>>()
-        fun report(key: String, issue: DayIssue) {
-            val issues = issuesByDate.getOrPut(key) { mutableSetOf() }
-            issues += issue
-        }
-        val dated = mutableListOf<Punch>()
-
-        receipts.forEach { receipt ->
-            if (receipt.occurrence != null) return@forEach
-            val key = receipt.workDate.ifBlank { REVIEW_DATE_KEY }
-            val entry = parseClockTime(receipt.entryTime)
-            val exit = parseClockTime(receipt.exitTime)
-            // Par completo no mesmo comprovante: contabilizado por durationMinutes, não aqui.
-            if (entry != null && exit != null) return@forEach
-            val date = parseWorkDate(receipt.workDate)
-            val kinds = when {
-                entry != null -> listOf(entry to PunchKind.ENTRY)
-                exit != null -> listOf(exit to PunchKind.EXIT)
-                else -> listOfNotNull(parseClockTime(receipt.workTime)?.let { it to PunchKind.UNKNOWN })
-            }
-            kinds.forEach { (time, kind) ->
-                // Data não reconhecida: o motivo (UNKNOWN_DATE) é do dia, marcado em dayStats.
-                if (date != null) dated += Punch(key, date.atTime(time), kind)
-            }
-        }
-
-        // Batida sem tipo (OCR leu só um horário) só vira entrada/saída quando o dia não deixa
-        // dúvida: há exatamente uma batida tipada e a sem tipo está do lado oposto no relógio.
-        // Assim "entrada 08:00 + horário solto 18:30" fecha o dia sem obrigar o usuário a editar.
-        // Com duas batidas sem tipo, ou sem batida tipada, o dia fica pendente para o usuário escolher.
-        val untypedByDay = dated.filter { it.kind == PunchKind.UNKNOWN }.groupBy { it.key }
-        val typed = dated.filter { it.kind != PunchKind.UNKNOWN }
-        val resolvedUntyped = mutableListOf<Punch>()
-        untypedByDay.forEach { (key, untypedOfDay) ->
-            val typedOfDay = typed.filter { it.key == key }
-            val unknown = untypedOfDay.singleOrNull()
-            val typedPunch = typedOfDay.singleOrNull()
-            val inferred = when {
-                unknown == null || typedPunch == null -> null
-                typedPunch.kind == PunchKind.ENTRY && unknown.at.isAfter(typedPunch.at) -> PunchKind.EXIT
-                typedPunch.kind == PunchKind.EXIT && unknown.at.isBefore(typedPunch.at) -> PunchKind.ENTRY
-                else -> null
-            }
-            if (inferred != null && unknown != null) {
-                resolvedUntyped += unknown.copy(kind = inferred)
-            } else {
-                untypedOfDay.forEach { report(it.key, DayIssue.UNTYPED_PUNCH) }
-            }
-        }
-
-        val open = ArrayDeque<Punch>()
-        (typed + resolvedUntyped).sortedWith(compareBy<Punch> { it.at }.thenBy { if (it.kind == PunchKind.ENTRY) 0 else 1 })
-            .forEach { punch ->
-                when (punch.kind) {
-                    PunchKind.ENTRY -> open.addLast(punch)
-                    PunchKind.EXIT -> {
-                        // Entrada aberta há mais de 16h é considerada esquecida: não pareia e deixa
-                        // o dia daquela entrada pendente, em vez de creditar uma jornada irreal.
-                        var hadStaleEntry = false
-                        while (open.isNotEmpty() &&
-                            Duration.between(open.first().at, punch.at).toMinutes() > MAX_SHIFT_MINUTES
-                        ) {
-                            report(open.removeFirst().key, DayIssue.MISSING_EXIT)
-                            hadStaleEntry = true
-                        }
-                        val entry = open.removeFirstOrNull()
-                        if (entry == null) {
-                            // Saída sozinha não é pendência: a entrada pode chegar em outro
-                            // comprovante depois. Só vira "saída sem entrada" quando havia uma entrada
-                            // que expirou (>16h), o que indica a batida intermediária esquecida.
-                            if (hadStaleEntry) report(punch.key, DayIssue.MISSING_ENTRY)
-                        } else {
-                            val worked = Duration.between(entry.at, punch.at).toMinutes().toInt()
-                            if (worked > 0) {
-                                minutesByDate[entry.key] = (minutesByDate[entry.key] ?: 0) + worked
-                            } else {
-                                // Entrada e saída no mesmo minuto: não é jornada, é erro de digitação/OCR.
-                                report(entry.key, DayIssue.IMPLAUSIBLE_SHIFT)
-                                report(punch.key, DayIssue.IMPLAUSIBLE_SHIFT)
-                            }
-                        }
-                    }
-                    PunchKind.UNKNOWN -> report(punch.key, DayIssue.UNTYPED_PUNCH)
-                }
-            }
-
-        return PairResult(minutesByDate, issuesByDate)
-    }
-
-    /** `true` quando o comprovante não tem nenhum horário que o pareamento consiga usar. */
-    private fun Receipt.hasReadablePunch(): Boolean =
-        parseClockTime(entryTime) != null ||
-            parseClockTime(exitTime) != null ||
-            parseClockTime(workTime) != null
-
     private fun countWorkdays(start: LocalDate, end: LocalDate, daysOff: Set<LocalDate>): Int {
         if (end.isBefore(start)) return 0
         var count = 0
@@ -431,17 +306,8 @@ object WorkStatsCalculator {
         return count
     }
 
-    private data class Punch(val key: String, val at: LocalDateTime, val kind: PunchKind)
-
-    private data class PairResult(
-        val minutesByDate: Map<String, Int>,
-        val issuesByDate: Map<String, Set<DayIssue>>
-    )
-
-    private enum class PunchKind { ENTRY, EXIT, UNKNOWN }
-
     /** Teto de uma jornada plausível: acima disso o pareamento é recusado e o dia fica pendente. */
-    private const val MAX_SHIFT_MINUTES = 16 * 60
+    internal const val MAX_SHIFT_MINUTES = 16 * 60
 
     private const val MINUTES_PER_DAY = 24 * 60
 }
