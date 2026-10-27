@@ -3,6 +3,7 @@ package br.com.jean.meuponto.ui
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.domain.DayIssue
 import br.com.jean.meuponto.domain.DayOccurrence
+import br.com.jean.meuponto.domain.Journey
 import br.com.jean.meuponto.domain.REVIEW_DATE_KEY
 import br.com.jean.meuponto.domain.WorkDayStats
 
@@ -28,14 +29,20 @@ internal val groupModes = listOf(
 
 internal data class ReceiptGroup(val title: String, val receipts: List<Receipt>)
 
+/** Jornada pronta para a lista: a [Journey] e os comprovantes que ela junta, na ordem entrada -> saída. */
+internal data class JourneyItem(val journey: Journey, val receipts: List<Receipt>)
+
 internal data class DaySection(
     val key: String,
     val title: String,
-    val receipts: List<Receipt>,
+    /** Jornadas que começam neste dia. Vazio no dia que só tem a saída de um turno noturno. */
+    val journeys: List<JourneyItem>,
     val minutes: Int,
     val receiptCount: Int,
     val issues: List<DayIssue>,
-    val occurrences: List<DayOccurrence> = emptyList()
+    val occurrences: List<DayOccurrence> = emptyList(),
+    /** Dia da entrada do turno cuja saída cai neste dia. A UI avisa quando [journeys] está vazio. */
+    val shiftStartDay: String? = null
 ) {
     val pending: Boolean get() = issues.isNotEmpty()
 }
@@ -49,15 +56,24 @@ internal data class MonthSection(
 )
 
 /**
- * Converte a lista plana de comprovantes em seções mês -> dia para a lista da tela inicial.
+ * Converte a lista plana de comprovantes em seções mês -> dia -> jornada para a lista da tela inicial.
+ *
+ * [journeysByDay] deve vir de `WorkStatsCalculator.journeys` sobre os mesmos [receipts]. Como cada
+ * comprovante está em exatamente uma jornada, nenhum comprovante some da lista. Quem fica no dia da
+ * saída de um turno noturno aparece com o dia sem jornada própria e recebe [DaySection.shiftStartDay].
  *
  * Ordenação: o grupo de data desconhecida ([REVIEW_DATE_KEY]) vem primeiro, para o usuário ver o
  * que precisa corrigir; o resto em ordem decrescente (mais recente no topo).
  */
 internal fun buildMonthSections(
     receipts: List<Receipt>,
-    dayStats: Map<String, WorkDayStats>
+    dayStats: Map<String, WorkDayStats>,
+    journeysByDay: Map<String, List<Journey>>
 ): List<MonthSection> {
+    val receiptsById = receipts.associateBy { it.id }
+    val shiftStartByExitId: Map<Long, String> = journeysByDay.flatMap { (day, journeys) ->
+        journeys.filter { it.crossesMidnight }.mapNotNull { journey -> journey.exitReceiptId?.let { it to day } }
+    }.toMap()
     return receipts
         .groupBy { monthKey(it.workDate) }
         .map { (key, items) ->
@@ -68,7 +84,10 @@ internal fun buildMonthSections(
                     DaySection(
                         key = dayKey,
                         title = dayTitle(dayKey),
-                        receipts = dayReceipts,
+                        journeys = journeysByDay[dayKey].orEmpty().map { journey ->
+                            JourneyItem(journey, journey.receiptIds.mapNotNull { receiptsById[it] })
+                        },
+                        shiftStartDay = dayReceipts.firstNotNullOfOrNull { shiftStartByExitId[it.id] },
                         minutes = dayStat?.minutes ?: 0,
                         receiptCount = dayStat?.receiptCount ?: dayReceipts.size,
                         issues = dayStat?.issues

@@ -135,9 +135,11 @@ import br.com.jean.meuponto.domain.PayrollSettingsStore
 import br.com.jean.meuponto.domain.PeriodStats
 import br.com.jean.meuponto.domain.PunchChoice
 import br.com.jean.meuponto.domain.WorkStatsCalculator
+import br.com.jean.meuponto.domain.dayIssueLabel
 import br.com.jean.meuponto.domain.dayIssueSummary
 import br.com.jean.meuponto.domain.dayOccurrenceSummary
 import br.com.jean.meuponto.domain.formatMinutes
+import br.com.jean.meuponto.domain.journeys
 import br.com.jean.meuponto.domain.occurrenceLabel
 import br.com.jean.meuponto.domain.punchChoiceOf
 import br.com.jean.meuponto.domain.receiptReviewHint
@@ -152,6 +154,7 @@ import br.com.jean.meuponto.ui.HeroNightText
 import br.com.jean.meuponto.ui.HeroNightTop
 import br.com.jean.meuponto.ui.Ink
 import br.com.jean.meuponto.ui.InsightsSheet
+import br.com.jean.meuponto.ui.JourneyItem
 import br.com.jean.meuponto.ui.MeuPontoTheme
 import br.com.jean.meuponto.ui.Mint
 import br.com.jean.meuponto.ui.MonthSection
@@ -352,9 +355,29 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val groupedReceipts = remember(visibleReceipts, selectedGroupMode) {
         groupReceipts(visibleReceipts, selectedGroupMode)
     }
-    val monthSections = remember(visibleReceipts, visibleDayStats) {
-        buildMonthSections(visibleReceipts, visibleDayStats)
+    val visibleJourneys = remember(visibleReceipts) {
+        WorkStatsCalculator.journeys(visibleReceipts)
     }
+    val monthSections = remember(visibleReceipts, visibleDayStats, visibleJourneys) {
+        buildMonthSections(visibleReceipts, visibleDayStats, visibleJourneys)
+    }
+    // Ações da lista compartilhadas pelos cartões de comprovante e de jornada (mesmos callbacks do modo
+    // "Dia", "Semana" e "Lista"). Agrupadas para o JourneyCard não receber um a um.
+    val rowActions = ReceiptRowActions(
+        isSelectionMode = isSelectionMode,
+        selectedReceiptIds = selectedReceiptIds,
+        onToggleSelection = { receipt ->
+            selectedReceiptIds = if (receipt.id in selectedReceiptIds) {
+                selectedReceiptIds - receipt.id
+            } else {
+                selectedReceiptIds + receipt.id
+            }
+        },
+        onOpen = { receiptBeingViewed = it },
+        onEdit = { receiptBeingEdited = it },
+        onShare = { shareAsPdf(context, listOf(it)) },
+        onRequestDelete = { receiptPendingDelete = it }
+    )
 
     fun showMessage(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
@@ -592,23 +615,11 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                                 )
                             }
                             if (dayExpanded) {
-                                items(day.receipts, key = { it.id }) { receipt ->
-                                    ReceiptCard(
-                                        receipt = receipt,
-                                        isSelectionMode = isSelectionMode,
-                                        isSelected = receipt.id in selectedReceiptIds,
-                                        onToggleSelection = {
-                                            selectedReceiptIds = if (receipt.id in selectedReceiptIds) {
-                                                selectedReceiptIds - receipt.id
-                                            } else {
-                                                selectedReceiptIds + receipt.id
-                                            }
-                                        },
-                                        onOpen = { receiptBeingViewed = receipt },
-                                        onEdit = { receiptBeingEdited = receipt },
-                                        onShare = { shareAsPdf(context, listOf(receipt)) },
-                                        onRequestDelete = { receiptPendingDelete = receipt }
-                                    )
+                                day.shiftStartDay?.takeIf { day.journeys.isEmpty() }?.let { startDay ->
+                                    item(key = "carry-${day.key}") { ShiftCarryNote(startDay) }
+                                }
+                                items(day.journeys, key = { "journey-${it.journey.id}" }) { journeyItem ->
+                                    JourneyCard(item = journeyItem, actions = rowActions)
                                 }
                             }
                         }
@@ -1294,6 +1305,134 @@ private fun ReceiptCard(
             }
         }
     }
+}
+
+/**
+ * Ações sobre um comprovante na lista, agrupadas para o [JourneyCard] não receber um parâmetro por
+ * callback. Os mesmos callbacks servem a todos os modos de organização que mostram comprovantes.
+ */
+private class ReceiptRowActions(
+    val isSelectionMode: Boolean,
+    val selectedReceiptIds: Set<Long>,
+    val onToggleSelection: (Receipt) -> Unit,
+    val onOpen: (Receipt) -> Unit,
+    val onEdit: (Receipt) -> Unit,
+    val onShare: (Receipt) -> Unit,
+    val onRequestDelete: (Receipt) -> Unit
+)
+
+/**
+ * Uma jornada da lista do mês. Com um comprovante só (horário, par no mesmo comprovante, ocorrência
+ * ou batida sem par), é o próprio [ReceiptCard], com toque, edição, compartilhamento e apagar de
+ * sempre. Com dois comprovantes (turno que cruzou a meia-noite), é um cartão expansível: a linha
+ * mostra o turno (`entrada → saída · duração`) e, ao expandir, os comprovantes de origem.
+ */
+@Composable
+private fun JourneyCard(item: JourneyItem, actions: ReceiptRowActions) {
+    if (item.receipts.size <= 1) {
+        item.receipts.forEach { ReceiptRow(it, actions) }
+        return
+    }
+    val journey = item.journey
+    var expanded by rememberSaveable(journey.id) { mutableStateOf(false) }
+    // No modo de seleção os comprovantes aparecem sempre, para cada um ter o seu checkbox.
+    val showReceipts = expanded || actions.isSelectionMode
+    val issueText = journey.issue?.let(::dayIssueLabel)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Card(
+            Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                ReceiptThumbnail(item.receipts.first().imagePath)
+                Spacer(Modifier.width(13.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        journey.day,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${journey.entryTime.orEmpty()} → ${journey.exitTime.orEmpty()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp)) {
+                            Text(
+                                formatMinutes(journey.minutes),
+                                Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        if (journey.crossesMidnight) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "madrugada",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Text(
+                        issueText ?: "${item.receipts.size} comprovantes",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (issueText != null) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = if (expanded) "Recolher jornada" else "Expandir jornada",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        if (showReceipts) {
+            Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item.receipts.forEach { ReceiptRow(it, actions) }
+            }
+        }
+    }
+}
+
+/** Um comprovante da lista, com os callbacks de [ReceiptRowActions]. */
+@Composable
+private fun ReceiptRow(receipt: Receipt, actions: ReceiptRowActions) {
+    ReceiptCard(
+        receipt = receipt,
+        isSelectionMode = actions.isSelectionMode,
+        isSelected = receipt.id in actions.selectedReceiptIds,
+        onToggleSelection = { actions.onToggleSelection(receipt) },
+        onOpen = { actions.onOpen(receipt) },
+        onEdit = { actions.onEdit(receipt) },
+        onShare = { actions.onShare(receipt) },
+        onRequestDelete = { actions.onRequestDelete(receipt) }
+    )
+}
+
+/** Aviso no dia da saída de um turno noturno: o dia não tem jornada própria, só a saída. */
+@Composable
+private fun ShiftCarryNote(startDay: String) {
+    Text(
+        "Saída faz parte de $startDay",
+        Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable
