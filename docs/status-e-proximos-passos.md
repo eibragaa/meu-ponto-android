@@ -1,6 +1,6 @@
 # Meu Ponto — status atual e próximos passos
 
-_Atualizado em 26/10/2026. Versão publicada: `v0.6.5` (`versionCode 15`). Versão preparada: `v0.6.6` (`versionCode 16`).
+_Atualizado em 27/10/2026. Versão publicada: `v0.6.6` (`versionCode 16`).
 
 Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
 
@@ -206,6 +206,16 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
   caso de >16h continua pendente nos dois dias.
 - **Não compilado/testado localmente:** sem Android SDK/Gradle no Termux (regra 10 do AGENTS.md).
 
+### 1.23 Release v0.6.6 — schema v3 + correção do "Revisar" (27/10/2026)
+- **Bloqueio do CI resolvido:** `@Database(version = 3)` sem o `3.json` commitado fazia os dois tasks
+  KSP (`play`/`github`) gravarem o schema no mesmo diretório ao mesmo tempo (`Empty schema file`).
+  `app/schemas/.../3.json` foi gerado no CI (task single-flavor), baixado e commitado em `519ec97`.
+- **Fluxo de release (método `android-release-updater` do hermes-brain):** dry-run `workflow_dispatch`
+  verde (run `40428904852`, 8m36s) → tag anotada `v0.6.6` + push → run `40430212147` verde → release
+  publicada (não-draft) com `Meu-Ponto-v0.6.6.apk` e `app-play-release.aab`, notas curadas de
+  [`release-notes-v0.6.6.md`](release-notes-v0.6.6.md).
+- **Pendente:** instalar o `Meu-Ponto-v0.6.6.apk` no aparelho e validar o fluxo real.
+
 ---
 
 ## 2. Estado atual do código
@@ -233,7 +243,8 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 ### 3.0 Releases publicadas
 | Versão | Data | Estado | Assets | Assinatura |
 |---|---|---|---|---|
-| **`v0.6.5`** | 23/10/2026 16:52 UTC | **Latest** | `Meu-Ponto-v0.6.5.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| **`v0.6.6`** | 27/10/2026 01:11 UTC | **Latest** | `Meu-Ponto-v0.6.6.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| `v0.6.5` | 23/10/2026 16:52 UTC | Anterior | `Meu-Ponto-v0.6.5.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.4` | 23/10/2026 15:48 UTC | Anterior | `Meu-Ponto-v0.6.4.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.3` | 23/10/2026 12:47 UTC | Anterior | `Meu-Ponto-v0.6.3.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.2` | 23/10/2026 11:47 UTC | Anterior | `Meu-Ponto-v0.6.2.apk` (42,4 MB), `app-play-release.aab` (21,7 MB) | Keystore novo (`4ef464d5…`) |
@@ -319,26 +330,24 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 | P18 | Editor de horário: ao digitar, o cursor voltava e os dígitos entravam fora de ordem (ex.: "22:34" em vez de "22:43") | Dados errados ao editar | **Corrigido e publicado na `v0.5.1`**: campo guarda o cursor e vai para o fim após a máscara |
 | P19 | Editor: "Só entrada" ou "Só saída" salvava também o outro horário (ex.: entrada e saída iguais para um comprovante só com horário) | Horas e pendências erradas | **Corrigido e publicado na `v0.5.1`**: só salva o tipo escolhido |
 | P20 | "Revisar" no cabeçalho do dia não explica o motivo (ex.: saída sem entrada no dia anterior). O aviso no card some ao salvar, mas o dia continua pendente | Usuário acha que não salvou | **Corrigido e publicado na `v0.6.2`**: `WorkDayStats.issues` + motivo no cabeçalho |
+| P21 | Turno noturno com "só entrada" + "só saída" **no mesmo dia** quebra o pareamento cross-midnight (saída 07:05 fica "antes" da entrada 22:47) → dia "entrada sem saída" com 0h | Horas zeradas / "Revisar" em turno que cruza a meia-noite | **Decisão (27/10): não alterar código.** Corrigir a data da saída para o dia seguinte, ou juntar entrada+saída num comprovante só. Melhoria de pareamento adiada até confirmação |
 
 ---
 
 ## 7. Próximos passos
 
-### 7.0 Retomar daqui (fim do dia 23/10/2026)
-- Branch de trabalho `feat-revisao-ocorrencias`, já integrada em `main` por fast-forward. Último
-  commit: `d76b2e7`.
-- Release `v0.6.5` é a **Latest**; cópia local do APK em `~/meu-ponto-apk/Meu-Ponto-v0.6.5.apk`.
+### 7.0 Retomar daqui (27/10/2026)
+- Release `v0.6.6` é a **Latest** (seção 1.23); `main` tem o schema `3.json` commitado (`519ec97`).
 - **Em aberto, em ordem sugerida:**
-  1. ~~Descobrir o comprovante que ainda mantém o "Revisar" em dias já corrigidos~~ — **resolvido em
-     código (26/10/2026, seção 1.22)**: batida única classificada não deixa mais o dia pendente.
-     Falta validar no aparelho com os dados reais.
-  2. Gerar e commitar `app/schemas/.../3.json` — exige build com Android SDK ou `gh auth refresh -s workflow`
-     para publicar o schema como artefato no CI.
-  3. QA no aparelho: editor, migração real 2→3, swipe, ícone/splash, teclado e aviso de atualização.
+  1. ~~Gerar e commitar `app/schemas/.../3.json`~~ — **feito** (commit `519ec97`, seção 1.23).
+  2. Validar no aparelho: instalar `Meu-Ponto-v0.6.6.apk` e conferir que batida única não prende mais o
+     "Revisar"; QA do editor, migração real 2→3, swipe, ícone/splash e aviso de atualização.
+  3. **Turno noturno com entrada e saída no mesmo dia** (P21): o pareamento cross-midnight exige saída
+     datada no dia seguinte (ou entrada+saída juntas). Decisão do dono (27/10): não alterar código; ele
+     corrige as datas na mão. Melhoria de pareamento adiada até confirmação explícita.
   4. Decidir se falta, folga e atestado devem ser neutros no saldo (hoje contam como dia trabalhado com 0h).
-- Build local segue inviável no Termux (sem Android SDK/Gradle): validar sempre pelo
-  `android-release.yml` (`workflow_dispatch`) e conferir o run. Se o KSP falhar com `Empty schema file`,
-  limpar os caches do Actions (`gh cache delete --all`) antes de repetir.
+- Build local segue inviável no Termux (sem Android SDK/Gradle): validar pelo `android-release.yml`
+  (`workflow_dispatch`). O `Empty schema file` do KSP ficou resolvido com o `3.json` commitado.
 
 ### 7.1 Migração do celular (passo a passo, fazer uma vez)
 **Concluída em 23/10/2026:** o updater atualizou o aparelho de `0.5.0` para `0.5.1`, confirmando a assinatura e o acesso ao GitHub. O roteiro abaixo fica como registro.
