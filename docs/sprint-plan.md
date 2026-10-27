@@ -6,33 +6,33 @@ Orquestração: o agente principal (fronteira) **planeja e revisa**; cada sprint
 **subagentes** (execução) e **verificada** pelo principal antes de fechar. Subagente implementa
 **sem commit** — o principal revisa (diff + testes + lint) e decide o commit.
 
-## Sprint 1 — Jornada agrupada · status: em andamento
+## Sprint 1 — Jornada agrupada · status: concluída
 
 Objetivo: no modo "Mês", cada turno vira **um** card (entrada+saída pareadas, inclusive madrugada),
 mostrando `23:50 → 06:57 · 7h07`, creditado no dia da entrada. Remove os textos "saída/entrada
 pendente" enganosos e reduz a lista.
 
-- [ ] Domínio: expor o pareamento via `journeys(receipts)` + `data class Journey`, **sem** mudar
+- [x] Domínio: expor o pareamento via `journeys(receipts)` + `data class Journey`, **sem** mudar
       `dayStats` (mesmo passe único; horas/pendências idênticas).
-- [ ] UI: `JourneyCard` (expansível para turno com 2 comprovantes); modos Dia/Semana/Lista intactos.
-- [ ] Testes: par completo; madrugada 23:50→06:57 (=427 min no dia da entrada); entrada solta; saída
+- [x] UI: `JourneyCard` (expansível para turno com 2 comprovantes); modos Dia/Semana/Lista intactos.
+- [x] Testes: par completo; madrugada 23:50→06:57 (=427 min no dia da entrada); entrada solta; saída
       solta; horário sem tipo; ocorrência; jornada >16h.
 
 **Aceite:** testes existentes de `dayStats`/`DayOccurrence` + novos verdes; `lint` sem erro.
 
-## Sprint 2 — Mapa do mês (Insights) · status: em andamento
+## Sprint 2 — Mapa do mês (Insights) · status: concluída
 
 Objetivo: grade do mês no `InsightsSheet` (estilo Samsung Health) — cada dia preenche conforme as
 horas, com a jornada esperada (`expectedDailyMinutes`) como meta; pendente em Coral; ocorrência
 neutra; toque no dia filtra a lista por aquela data.
 
-- [ ] UI: grade 7 colunas no topo do `InsightsSheet`, mantendo os cards de números atuais.
-- [ ] Navegação: `onSelectDay` → seta a busca pela data e fecha o sheet.
-- [ ] Regra pura: cor/legenda por célula como função pura testável (se introduzir lógica nova).
+- [x] UI: grade 7 colunas no topo do `InsightsSheet`, mantendo os cards de números atuais.
+- [x] Navegação: `onSelectDay` → seta a busca pela data e fecha o sheet.
+- [x] Regra pura: cor/legenda por célula como função pura testável (se introduzir lógica nova).
 
 **Aceite:** usa só `PeriodStats.days` (já calculado); sem duplicar regra de negócio; sem I/O na UI.
 
-## Sprint 3 — Lembretes proativos · status: na fila
+## Sprint 3 — Lembretes proativos · status: em andamento
 
 Objetivo: aprender o horário típico de **entrada** e os dias de trabalho, e notificar para lembrar
 de "bater o ponto"; lembrete extra quando há entrada sem saída (turno de madrugada).
