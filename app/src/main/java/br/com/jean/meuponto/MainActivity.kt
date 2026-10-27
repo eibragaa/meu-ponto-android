@@ -707,7 +707,16 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         )
     }
     if (showInsights) {
-        InsightsSheet(stats = periodStats, onDismiss = { showInsights = false })
+        InsightsSheet(
+            stats = periodStats,
+            onSelectDay = { date ->
+                query = date
+                selectedFilter = "all"
+                showInsights = false
+            },
+            expectedDailyMinutes = payrollSettings.expectedDailyMinutes,
+            onDismiss = { showInsights = false }
+        )
     }
     backupPasswordDialog?.let { action ->
         BackupPasswordDialog(
