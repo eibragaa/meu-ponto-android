@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Coral -->
+  <rect width="108" height="108" fill="#FF8A72"/>
+  <!-- Comprovante branco -->
+  <rect x="34.2" y="32.9" width="39.6" height="42.2" rx="5" fill="#FFFFFF"/>
+  <!-- Linhas -->
+  <rect x="44.1" y="43.6" width="19.8" height="3.1" rx="1.55" fill="#157C70"/>
+  <rect x="44.1" y="51.9" width="15.5" height="3.1" rx="1.55" fill="#157C70"/>
+  <!-- Ponto -->
+  <circle cx="63.3" cy="62.7" r="3.7" fill="#157C70"/>
+</svg>
