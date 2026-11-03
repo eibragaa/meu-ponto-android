@@ -2,6 +2,8 @@ package br.com.jean.meuponto.ui
 
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.domain.DayIssue
+import br.com.jean.meuponto.domain.DayPunchStatus
+import br.com.jean.meuponto.domain.dayPunchStatus
 import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.Journey
 import br.com.jean.meuponto.domain.REVIEW_DATE_KEY
@@ -42,7 +44,9 @@ internal data class DaySection(
     val issues: List<DayIssue>,
     val occurrences: List<DayOccurrence> = emptyList(),
     /** Dia da entrada do turno cuja saída cai neste dia. A UI avisa quando [journeys] está vazio. */
-    val shiftStartDay: String? = null
+    val shiftStartDay: String? = null,
+    /** Status de completude de batidas, para o badge da lista. */
+    val punchStatus: DayPunchStatus = DayPunchStatus.COMPLETE
 ) {
     val pending: Boolean get() = issues.isNotEmpty()
 }
@@ -96,7 +100,8 @@ internal fun buildMonthSections(
                             } else {
                                 emptyList()
                             },
-                        occurrences = dayStat?.occurrences.orEmpty()
+                        occurrences = dayStat?.occurrences.orEmpty(),
+                        punchStatus = dayPunchStatus(dayReceipts)
                     )
                 }
                 .sortedWith(

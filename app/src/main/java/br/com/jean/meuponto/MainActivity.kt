@@ -136,7 +136,10 @@ import br.com.jean.meuponto.domain.PeriodStats
 import br.com.jean.meuponto.domain.PunchChoice
 import br.com.jean.meuponto.domain.WorkStatsCalculator
 import br.com.jean.meuponto.domain.dayIssueLabel
+import br.com.jean.meuponto.domain.DayPunchStatus
 import br.com.jean.meuponto.domain.dayIssueSummary
+import br.com.jean.meuponto.domain.classifyUntyped
+import br.com.jean.meuponto.domain.punchChips
 import br.com.jean.meuponto.domain.dayOccurrenceSummary
 import br.com.jean.meuponto.domain.formatMinutes
 import br.com.jean.meuponto.domain.journeys
@@ -363,6 +366,10 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
     // Ações da lista compartilhadas pelos cartões de comprovante e de jornada (mesmos callbacks do modo
     // "Dia", "Semana" e "Lista"). Agrupadas para o JourneyCard não receber um a um.
+    fun showMessage(message: String) {
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
     val rowActions = ReceiptRowActions(
         isSelectionMode = isSelectionMode,
         selectedReceiptIds = selectedReceiptIds,
@@ -376,12 +383,24 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         onOpen = { receiptBeingViewed = it },
         onEdit = { receiptBeingEdited = it },
         onShare = { shareAsPdf(context, listOf(it)) },
-        onRequestDelete = { receiptPendingDelete = it }
+        onRequestDelete = { receiptPendingDelete = it },
+        onClassify = { receipt, choice ->
+            scope.launch {
+                val (entry, exit) = classifyUntyped(receipt, choice)
+                dao.updateReceiptDetails(
+                    id = receipt.id,
+                    workDate = receipt.workDate,
+                    workTime = receipt.workTime,
+                    entryTime = entry,
+                    exitTime = exit,
+                    needsReview = receipt.workDate.isBlank(),
+                    occurrence = null
+                )
+                showMessage("Comprovante classificado.")
+            }
+        }
     )
 
-    fun showMessage(message: String) {
-        scope.launch { snackbarHostState.showSnackbar(message) }
-    }
 
     fun checkUpdatesManually() {
         updateCoordinator?.checkNow()
@@ -407,12 +426,16 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
      * Importa uma imagem (câmera ou galeria) e grava o comprovante com o que o OCR reconheceu.
      * A cópia para o storage privado roda em IO; a mensagem devolvida vira snackbar.
      */
-    fun processUri(uri: Uri) {
+    var pendingPunch by remember { mutableStateOf<PunchChoice?>(null) }
+
+    fun processUri(uri: Uri, preferredPunch: PunchChoice? = pendingPunch) {
+        val punch = preferredPunch
+        pendingPunch = null
         scope.launch {
             isProcessing = true
             try {
                 val savedFile = withContext(Dispatchers.IO) { copyToPrivateStorage(context, uri) }
-                showMessage(recognizeAndSave(context, dao, savedFile))
+                showMessage(recognizeAndSave(context, dao, savedFile, punch))
             } catch (error: Exception) {
                 showMessage("Não foi possível ler o comprovante. Tente novamente.")
             } finally {
@@ -422,7 +445,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
 
     val importReceipt = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) processUri(uri)
+        if (uri != null) processUri(uri, pendingPunch)
     }
 
     // A senha é guardada em `pendingBackupPassword` *antes* de abrir o seletor de arquivos: o
@@ -478,7 +501,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
             val imageUri = scanResult?.pages?.firstOrNull()?.imageUri
             if (imageUri != null) {
-                processUri(imageUri)
+                processUri(imageUri, pendingPunch)
             } else {
                 showMessage("Não foi possível preparar o comprovante digitalizado.")
             }
@@ -515,15 +538,27 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (receipts.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = { showAddSheet = true },
-                    icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                    text = { Text("Adicionar") },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.navigationBarsPadding().padding(bottom = 8.dp)
-                )
+                Row(
+                    Modifier.navigationBarsPadding().padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ExtendedFloatingActionButton(
+                        onClick = { pendingPunch = PunchChoice.ENTRY; showAddSheet = true },
+                        icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                        text = { Text("Entrada") },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                    ExtendedFloatingActionButton(
+                        onClick = { pendingPunch = PunchChoice.EXIT; showAddSheet = true },
+                        icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                        text = { Text("Saída") },
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary,
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                }
             }
         }
     ) { padding ->
@@ -581,7 +616,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 )
             }
             if (visibleReceipts.isEmpty()) {
-                item { EmptyState(onAdd = { showAddSheet = true }, isSearch = query.isNotBlank()) }
+                item { EmptyState(onAdd = { pendingPunch = null; showAddSheet = true }, isSearch = query.isNotBlank()) }
             } else if (selectedGroupMode == "month") {
                 monthSections.forEach { month ->
                     val monthExpanded = query.isNotBlank() || expandedMonths.contains(month.key)
@@ -647,7 +682,22 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                             onOpen = { receiptBeingViewed = receipt },
                             onEdit = { receiptBeingEdited = receipt },
                             onShare = { shareAsPdf(context, listOf(receipt)) },
-                            onRequestDelete = { receiptPendingDelete = receipt }
+                            onRequestDelete = { receiptPendingDelete = receipt },
+                            onClassify = { choice ->
+                                scope.launch {
+                                    val (entry, exit) = classifyUntyped(receipt, choice)
+                                    dao.updateReceiptDetails(
+                                        id = receipt.id,
+                                        workDate = receipt.workDate,
+                                        workTime = receipt.workTime,
+                                        entryTime = entry,
+                                        exitTime = exit,
+                                        needsReview = receipt.workDate.isBlank(),
+                                        occurrence = null
+                                    )
+                                    showMessage("Comprovante classificado.")
+                                }
+                            }
                         )
                     }
                 }
@@ -666,9 +716,18 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
 
     if (showAddSheet) {
         AddReceiptSheet(
-            onDismiss = { showAddSheet = false },
-            onCamera = { showAddSheet = false; startScanner() },
-            onGallery = { showAddSheet = false; importReceipt.launch(arrayOf("image/*")) }
+            punch = pendingPunch,
+            onDismiss = { showAddSheet = false; pendingPunch = null },
+            onCamera = { punch ->
+                pendingPunch = punch
+                showAddSheet = false
+                startScanner()
+            },
+            onGallery = { punch ->
+                pendingPunch = punch
+                showAddSheet = false
+                importReceipt.launch(arrayOf("image/*"))
+            }
         )
     }
     if (showBackupSheet) {
@@ -1183,6 +1242,20 @@ private fun DayHeader(
                 )
             }
             Spacer(Modifier.width(8.dp))
+        } else if (day.punchStatus == DayPunchStatus.MISSING_EXIT || day.punchStatus == DayPunchStatus.MISSING_ENTRY) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.padding(top = 1.dp)
+            ) {
+                Text(
+                    if (day.punchStatus == DayPunchStatus.MISSING_EXIT) "Falta saída" else "Falta entrada",
+                    Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Spacer(Modifier.width(8.dp))
         } else if (day.occurrences.isNotEmpty()) {
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
@@ -1236,7 +1309,8 @@ private fun ReceiptCard(
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onShare: () -> Unit,
-    onRequestDelete: () -> Unit
+    onRequestDelete: () -> Unit,
+    onClassify: (PunchChoice) -> Unit = {}
 ) {
     val duration = WorkStatsCalculator.durationMinutes(receipt)
     SwipeToDeleteBox(
@@ -1293,22 +1367,52 @@ private fun ReceiptCard(
                             }
                         }
                     }
-                    Text(
-                        if (receipt.needsReview) receiptReviewHint(receipt) else File(receipt.imagePath).name,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (receipt.needsReview) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    if (receipt.needsReview) {
+                        Text(
+                            receiptReviewHint(receipt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (!isSelectionMode && receipt.entryTime == null && receipt.exitTime == null && receipt.workTime.isNotBlank()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(
+                                selected = false,
+                                onClick = { onClassify(PunchChoice.ENTRY) },
+                                label = { Text("Entrada") },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = organizeChipColors()
+                            )
+                            FilterChip(
+                                selected = false,
+                                onClick = { onClassify(PunchChoice.EXIT) },
+                                label = { Text("Saída") },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = organizeChipColors()
+                            )
+                        }
+                    } else if (!isSelectionMode) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            punchChips(receipt).forEach { chip ->
+                                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp)) {
+                                    Text(
+                                        chip,
+                                        Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 if (isSelectionMode) {
                     androidx.compose.material3.Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
                 } else {
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Outlined.Edit, contentDescription = "Editar data e horário", tint = MaterialTheme.colorScheme.primary)
-                    }
-                    IconButton(onClick = onShare) {
-                        Icon(Icons.Outlined.Share, contentDescription = "Compartilhar PDF", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
@@ -1327,7 +1431,8 @@ private class ReceiptRowActions(
     val onOpen: (Receipt) -> Unit,
     val onEdit: (Receipt) -> Unit,
     val onShare: (Receipt) -> Unit,
-    val onRequestDelete: (Receipt) -> Unit
+    val onRequestDelete: (Receipt) -> Unit,
+    val onClassify: (Receipt, PunchChoice) -> Unit
 )
 
 /**
@@ -1429,7 +1534,8 @@ private fun ReceiptRow(receipt: Receipt, actions: ReceiptRowActions) {
         onOpen = { actions.onOpen(receipt) },
         onEdit = { actions.onEdit(receipt) },
         onShare = { actions.onShare(receipt) },
-        onRequestDelete = { actions.onRequestDelete(receipt) }
+        onRequestDelete = { actions.onRequestDelete(receipt) },
+        onClassify = { choice -> actions.onClassify(receipt, choice) }
     )
 }
 
@@ -1529,14 +1635,24 @@ private fun TrustFooter(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddReceiptSheet(onDismiss: () -> Unit, onCamera: () -> Unit, onGallery: () -> Unit) {
+private fun AddReceiptSheet(
+    punch: PunchChoice?,
+    onDismiss: () -> Unit,
+    onCamera: (PunchChoice?) -> Unit,
+    onGallery: (PunchChoice?) -> Unit
+) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Adicionar comprovante", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            Text("Escolha como deseja guardar este momento.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (punch == null) "Escolha como deseja guardar este momento."
+                else "Registrando como ${punch.label.lowercase()}.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(Modifier.height(4.dp))
-            SourceOption(Icons.Outlined.CameraAlt, "Usar câmera", "Fotografe agora e deixe o OCR organizar", onCamera)
-            SourceOption(Icons.Outlined.FolderOpen, "Escolher da galeria", "Importe uma imagem já salva", onGallery)
+            SourceOption(Icons.Outlined.CameraAlt, "Usar câmera", "Fotografe agora e deixe o OCR organizar") { onCamera(punch) }
+            SourceOption(Icons.Outlined.FolderOpen, "Escolher da galeria", "Importe uma imagem já salva") { onGallery(punch) }
         }
     }
 }
