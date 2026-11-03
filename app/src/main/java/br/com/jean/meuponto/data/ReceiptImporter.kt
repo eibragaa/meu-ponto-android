@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import br.com.jean.meuponto.domain.PunchChoice
 import br.com.jean.meuponto.domain.WorkStatsCalculator
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -45,7 +46,12 @@ internal fun copyToPrivateStorage(context: Context, uri: Uri): File {
  * corrigir na UI. A mensagem devolvida é o texto do snackbar — por isso descreve o que faltou, não
  * "erro".
  */
-internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: File): String {
+internal suspend fun recognizeAndSave(
+    context: Context,
+    dao: ReceiptDao,
+    file: File,
+    preferredPunch: PunchChoice? = null
+): String {
     val text = withContext(Dispatchers.IO) {
         val image = InputImage.fromFilePath(context, Uri.fromFile(file))
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -61,8 +67,18 @@ internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: F
         .mapNotNull { WorkStatsCalculator.normalizeClockTime(it.value) }
         .toList()
     val punches = WorkStatsCalculator.ocrPunches(times)
-    // Um horário só não diz se é entrada ou saída: fica para o usuário escolher na edição.
-    val needsReview = date == null || times.size < 2
+    // Quando o usuário escolheu o tipo antes da captura, um horário só já sai tipado.
+    var entry = punches.entry
+    var exit = punches.exit
+    val needsReview = if (times.size == 1 && preferredPunch != null) {
+        when (preferredPunch) {
+            PunchChoice.ENTRY -> { entry = times[0]; date == null }
+            PunchChoice.EXIT -> { exit = times[0]; date == null }
+            else -> date == null || times.size < 2
+        }
+    } else {
+        date == null || times.size < 2
+    }
 
     dao.insert(
         Receipt(
@@ -71,8 +87,8 @@ internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: F
             workTime = punches.workTime,
             imagePath = file.absolutePath,
             recognizedText = text,
-            entryTime = punches.entry,
-            exitTime = punches.exit,
+            entryTime = entry,
+            exitTime = exit,
             needsReview = needsReview
         )
     )
@@ -81,7 +97,7 @@ internal suspend fun recognizeAndSave(context: Context, dao: ReceiptDao, file: F
         date == null && times.isEmpty() -> "Comprovante salvo — revise data e horário."
         date == null -> "Comprovante salvo — revise a data."
         times.isEmpty() -> "Comprovante salvo — revise o horário."
-        times.size == 1 -> "Comprovante salvo — diga se o horário é entrada ou saída."
+        times.size == 1 && preferredPunch == null -> "Comprovante salvo — diga se o horário é entrada ou saída."
         else -> "Comprovante salvo — confira a data $date."
     }
 }
