@@ -28,11 +28,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -320,6 +328,23 @@ private fun HeatDayCell(
         if (day != null && day.occurrences.isNotEmpty()) add(dayOccurrenceSummary(day.occurrences))
     }.joinToString(", ")
 
+    val isIncomplete = inPeriod && minutes > 0 && (target == null || minutes < target)
+    val rotation = if (isIncomplete) {
+        val transition = rememberInfiniteTransition(label = "clock")
+        val angle by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "rotation"
+        )
+        angle
+    } else {
+        0f
+    }
+
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -334,6 +359,18 @@ private fun HeatDayCell(
             style = MaterialTheme.typography.labelLarge,
             color = textColor
         )
+        if (isIncomplete) {
+            Icon(
+                Icons.Outlined.Schedule,
+                contentDescription = null,
+                tint = colors.onSurface.copy(alpha = 0.7f),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(2.dp)
+                    .size(10.dp)
+                    .rotate(rotation)
+            )
+        }
         if (day != null && day.issues.isNotEmpty()) {
             Box(
                 Modifier
