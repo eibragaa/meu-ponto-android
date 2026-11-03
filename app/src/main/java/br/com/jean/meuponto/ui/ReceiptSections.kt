@@ -3,7 +3,7 @@ package br.com.jean.meuponto.ui
 import br.com.jean.meuponto.data.Receipt
 import br.com.jean.meuponto.domain.DayIssue
 import br.com.jean.meuponto.domain.DayPunchStatus
-import br.com.jean.meuponto.domain.dayPunchStatus
+import br.com.jean.meuponto.domain.dayPunchStatusFromJourneys
 import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.Journey
 import br.com.jean.meuponto.domain.REVIEW_DATE_KEY
@@ -101,7 +101,7 @@ internal fun buildMonthSections(
                                 emptyList()
                             },
                         occurrences = dayStat?.occurrences.orEmpty(),
-                        punchStatus = dayPunchStatus(dayReceipts)
+                        punchStatus = dayPunchStatusFromJourneys(journeysByDay[dayKey].orEmpty(), dayReceipts)
                     )
                 }
                 .sortedWith(

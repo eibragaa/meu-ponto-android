@@ -65,6 +65,30 @@ fun classifyUntyped(receipt: Receipt, choice: PunchChoice): Pair<String?, String
     }
 }
 
+/**
+ * Status de batidas de um dia, calculado a partir das jornadas **globais** (pareamento cross-day).
+ *
+ * Diferente de [dayPunchStatus], que isola os comprovantes do dia e falha em turnos noturnos, esta
+ * versão usa as jornadas já pareadas (entrada e saída podem estar em dias diferentes). Evita o falso
+ * "Falta entrada/saída" em dias que são parte de um turno completo de madrugada.
+ */
+fun dayPunchStatusFromJourneys(journeys: List<Journey>, receipts: List<Receipt>): DayPunchStatus {
+    if (receipts.isEmpty()) return DayPunchStatus.EMPTY
+    if (journeys.isEmpty()) return DayPunchStatus.COMPLETE
+    var missingExit = false
+    var missingEntry = false
+    for (journey in journeys) {
+        if (journey.occurrence != null) continue
+        if (journey.entryTime != null && journey.exitTime == null) missingExit = true
+        if (journey.exitTime != null && journey.entryTime == null) missingEntry = true
+    }
+    return when {
+        missingExit -> DayPunchStatus.MISSING_EXIT
+        missingEntry -> DayPunchStatus.MISSING_ENTRY
+        else -> DayPunchStatus.COMPLETE
+    }
+}
+
 fun punchChips(receipt: Receipt): List<String> = buildList {
     when {
         !receipt.entryTime.isNullOrBlank() && !receipt.exitTime.isNullOrBlank() -> {
