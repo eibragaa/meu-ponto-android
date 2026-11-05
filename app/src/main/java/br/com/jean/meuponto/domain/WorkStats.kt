@@ -43,7 +43,11 @@ data class WorkDayStats(
     /** Motivos distintos, na ordem de [DayIssue]; vazio quando o dia está consistente. */
     val issues: List<DayIssue>,
     /** Ocorrências resolvidas no dia (esquecimento, falta, folga, atestado), sem repetição. */
-    val occurrences: List<DayOccurrence> = emptyList()
+    val occurrences: List<DayOccurrence> = emptyList(),
+    /** Horário da saída da última jornada pareada e creditada a este dia, ou `null` quando indisponível. */
+    val exitTime: String? = null,
+    /** `true` quando [exitTime] pertence ao dia seguinte ao da entrada. */
+    val exitCrossesMidnight: Boolean = false
 ) {
     /** Um dia está pendente quando existe pelo menos um motivo em [issues]. */
     val pending: Boolean get() = issues.isNotEmpty()
@@ -149,13 +153,23 @@ object WorkStatsCalculator {
     fun dayStats(receipts: List<Receipt>): Map<String, WorkDayStats> {
         val paired = PunchPairing.pair(receipts)
         return receipts.groupBy { it.workDate.ifBlank { REVIEW_DATE_KEY } }.mapValues { (date, dayReceipts) ->
+            val issues = paired.issuesByDate[date].orEmpty().sorted()
+            val hasOccurrence = dayReceipts.any { it.occurrence != null }
+            val hasIncompleteShift = paired.shifts.any {
+                it.key == date && it.occurrence == null && it.minutes == 0 && it.issues.isEmpty() &&
+                    (it.entry != null || it.exit != null)
+            }
+            val lastExit = paired.lastExitByDate[date]
+                ?.takeUnless { issues.isNotEmpty() || hasOccurrence || hasIncompleteShift }
             WorkDayStats(
                 date = date,
                 minutes = paired.minutesByDate[date] ?: 0,
                 receiptCount = dayReceipts.size,
-                issues = paired.issuesByDate[date].orEmpty().sorted(),
+                issues = issues,
                 // Comprovante com ocorrência não soma horas nem gera motivo; a ocorrência aparece no dia.
-                occurrences = dayReceipts.mapNotNull { it.occurrence }.distinct().sorted()
+                occurrences = dayReceipts.mapNotNull { it.occurrence }.distinct().sorted(),
+                exitTime = lastExit?.time,
+                exitCrossesMidnight = lastExit?.crossesMidnight == true
             )
         }
     }
