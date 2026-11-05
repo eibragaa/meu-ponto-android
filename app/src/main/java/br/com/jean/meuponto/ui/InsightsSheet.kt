@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -141,6 +142,8 @@ fun InsightsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(
             Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
@@ -246,7 +249,10 @@ fun InsightsSheet(
 @Composable
 private fun MonthHeatCard(stats: PeriodStats, expectedDailyMinutes: Int?, onSelectDay: (String) -> Unit) {
     val target = expectedDailyMinutes ?: stats.averageMinutes
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         monthsInPeriod(stats.periodStart, stats.periodEnd).forEach { month ->
             MonthHeatGrid(
                 month = month,
