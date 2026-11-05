@@ -384,6 +384,22 @@ private fun CompactMonthCalendar(
                     Icon(Icons.Outlined.ChevronRight, contentDescription = "Próximo mês")
                 }
             }
+            if (months.size > 1) {
+                Text(
+                    text = "Meses do período: " + months.joinToString(" · ") {
+                        it.format(monthTitleFormatter).replaceFirstChar { first -> first.uppercaseChar() }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            contentDescription = "Meses disponíveis no período: " +
+                                months.joinToString(" e ") { it.format(monthTitleFormatter) }
+                        },
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant
+                )
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 weekdayHeaders.forEach { header ->
                     Text(
