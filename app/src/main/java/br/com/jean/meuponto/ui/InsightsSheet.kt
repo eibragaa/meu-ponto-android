@@ -102,6 +102,25 @@ internal fun dayHeatLevel(minutes: Int, targetMinutes: Int?): HeatLevel {
 }
 
 /**
+ * Retorna os meses tocados pelo intervalo inclusivo [start]..[end], em ordem cronológica.
+ *
+ * A lista é vazia quando o intervalo é inválido. A regra fica aqui, junto da formatação da grade,
+ * para que a tela não tenha de inferir quantos calendários precisa exibir.
+ */
+internal fun monthsInPeriod(start: LocalDate, end: LocalDate): List<YearMonth> {
+    if (end.isBefore(start)) return emptyList()
+    val lastMonth = YearMonth.from(end)
+    val months = buildList {
+        var current = YearMonth.from(start)
+        while (!current.isAfter(lastMonth)) {
+            add(current)
+            current = current.plusMonths(1)
+        }
+    }
+    return months
+}
+
+/**
  * Resumo do período de folha: grade do mês, total, média, pendências, projeção e comparação com o período anterior.
  *
  * Recebe [PeriodStats] já calculado — a tela não recalcula nada e não acessa o banco. Quando o
@@ -219,7 +238,7 @@ fun InsightsSheet(
 }
 
 /**
- * Cartão com a grade do mês de [PeriodStats.periodStart]: título, cabeçalho da semana e um dia por célula.
+ * Cartões com uma grade para cada mês tocado pelo período: título, cabeçalho da semana e um dia por célula.
  *
  * A referência de cor é [expectedDailyMinutes] quando informada; senão, a média do período. Se a média
  * for zero (nenhuma hora no período), [dayHeatLevel] recebe a referência zerada e cada dia com horas cai em LOW.
@@ -227,7 +246,27 @@ fun InsightsSheet(
 @Composable
 private fun MonthHeatCard(stats: PeriodStats, expectedDailyMinutes: Int?, onSelectDay: (String) -> Unit) {
     val target = expectedDailyMinutes ?: stats.averageMinutes
-    val month = YearMonth.from(stats.periodStart)
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        monthsInPeriod(stats.periodStart, stats.periodEnd).forEach { month ->
+            MonthHeatGrid(
+                month = month,
+                stats = stats,
+                target = target,
+                expectedDailyMinutes = expectedDailyMinutes,
+                onSelectDay = onSelectDay
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthHeatGrid(
+    month: YearMonth,
+    stats: PeriodStats,
+    target: Int?,
+    expectedDailyMinutes: Int?,
+    onSelectDay: (String) -> Unit
+) {
     // DayOfWeek.value vai de 1 (segunda) a 7 (domingo); módulo 7 deixa o domingo na coluna 0.
     val leadingBlanks = month.atDay(1).dayOfWeek.value % DAYS_PER_WEEK
     val monthDays: List<LocalDate?> = List(leadingBlanks) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
