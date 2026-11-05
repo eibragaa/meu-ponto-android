@@ -1,5 +1,8 @@
 package br.com.jean.meuponto.ui
 
+import br.com.jean.meuponto.domain.DayIssue
+import br.com.jean.meuponto.domain.DayOccurrence
+import br.com.jean.meuponto.domain.WorkDayStats
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
@@ -7,6 +10,63 @@ import java.time.YearMonth
 
 /** Nível de preenchimento da grade do mês ([dayHeatLevel]): regra pura, sem Compose. */
 class InsightsHeatTest {
+
+    @Test
+    fun `dia completo mostra estado de saida`() {
+        val day = WorkDayStats("05/11/2026", 480, 2, emptyList(), exitTime = "17:00")
+
+        assertEquals(DayVisualState.COMPLETE, dayVisualState(day, inPeriod = true))
+    }
+
+    @Test
+    fun `dia com pendencia mostra estado incompleto`() {
+        val day = WorkDayStats("05/11/2026", 0, 1, listOf(DayIssue.MISSING_EXIT))
+
+        assertEquals(DayVisualState.INCOMPLETE, dayVisualState(day, inPeriod = true))
+    }
+
+    @Test
+    fun `so saida ocorrencia e sem registro nao mostram relogio`() {
+        val exitOnly = WorkDayStats("05/11/2026", 0, 1, emptyList())
+        val occurrence = WorkDayStats(
+            "05/11/2026",
+            0,
+            1,
+            emptyList(),
+            occurrences = listOf(DayOccurrence.ABSENCE)
+        )
+
+        assertEquals(DayVisualState.NONE, dayVisualState(exitOnly, inPeriod = true))
+        assertEquals(DayVisualState.NONE, dayVisualState(occurrence, inPeriod = true))
+        assertEquals(DayVisualState.NONE, dayVisualState(null, inPeriod = true))
+    }
+
+    @Test
+    fun `movimento reduzido inicia diretamente no estado final`() {
+        assertEquals(1f, initialDayAnimationProgress(reduceMotion = true))
+        assertEquals(0f, initialDayAnimationProgress(reduceMotion = false))
+    }
+
+    @Test
+    fun `mes inicial prefere hoje dentro do periodo e fim fora`() {
+        val start = LocalDate.of(2026, 10, 5)
+        val end = LocalDate.of(2026, 11, 5)
+
+        assertEquals(YearMonth.of(2026, 10), initialCompactMonth(start, end, LocalDate.of(2026, 10, 20)))
+        assertEquals(YearMonth.of(2026, 11), initialCompactMonth(start, end, LocalDate.of(2026, 12, 1)))
+    }
+
+    @Test
+    fun `navegacao compacta fica limitada aos meses do periodo`() {
+        val start = LocalDate.of(2026, 10, 5)
+        val end = LocalDate.of(2026, 11, 5)
+        val october = YearMonth.of(2026, 10)
+        val november = YearMonth.of(2026, 11)
+
+        assertEquals(october, stepCompactMonth(october, start, end, -1))
+        assertEquals(november, stepCompactMonth(october, start, end, 1))
+        assertEquals(november, stepCompactMonth(november, start, end, 1))
+    }
 
     @Test
     fun `mesmo mes retorna uma unica grade`() {
