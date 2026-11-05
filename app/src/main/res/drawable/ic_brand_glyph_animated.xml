@@ -1,0 +1,6 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_brand_glyph">
+    <target
+        android:name="brandGlyph"
+        android:animation="@animator/splash_brand_glyph" />
+</animated-vector>
