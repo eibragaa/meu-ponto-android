@@ -15,7 +15,8 @@ class WorkStatsCalculatorTest {
         entry: String? = null,
         exit: String? = null,
         workTime: String = "",
-        needsReview: Boolean = false
+        needsReview: Boolean = false,
+        occurrence: DayOccurrence? = null
     ) = Receipt(
         capturedAt = 0L,
         workDate = date,
@@ -24,7 +25,8 @@ class WorkStatsCalculatorTest {
         recognizedText = "",
         entryTime = entry,
         exitTime = exit,
-        needsReview = needsReview
+        needsReview = needsReview,
+        occurrence = occurrence
     )
 
     @Test
@@ -35,6 +37,8 @@ class WorkStatsCalculatorTest {
 
         assertEquals(540, days.getValue("22/10/2026").minutes)
         assertFalse(days.getValue("22/10/2026").pending)
+        assertEquals("17:00", days.getValue("22/10/2026").exitTime)
+        assertFalse(days.getValue("22/10/2026").exitCrossesMidnight)
     }
 
     @Test
@@ -48,6 +52,7 @@ class WorkStatsCalculatorTest {
 
         assertEquals(540, days.getValue("22/10/2026").minutes)
         assertFalse(days.getValue("22/10/2026").pending)
+        assertEquals("17:00", days.getValue("22/10/2026").exitTime)
     }
 
     @Test
@@ -122,6 +127,9 @@ class WorkStatsCalculatorTest {
         assertEquals(495, days.getValue("21/10/2026").minutes)
         assertFalse(days.getValue("21/10/2026").pending)
         assertFalse(days.getValue("22/10/2026").pending)
+        assertEquals("06:57", days.getValue("21/10/2026").exitTime)
+        assertTrue(days.getValue("21/10/2026").exitCrossesMidnight)
+        assertNull(days.getValue("22/10/2026").exitTime)
     }
 
     @Test
@@ -187,6 +195,86 @@ class WorkStatsCalculatorTest {
         )
 
         assertEquals(480, days.getValue("22/10/2026").minutes)
+        assertEquals("17:00", days.getValue("22/10/2026").exitTime)
+        assertFalse(days.getValue("22/10/2026").exitCrossesMidnight)
+    }
+
+    @Test
+    fun `duas jornadas escolhem a ultima saida cronologica`() {
+        val day = WorkStatsCalculator.dayStats(
+            listOf(
+                receipt(entry = "08:00"),
+                receipt(exit = "12:00"),
+                receipt(entry = "13:00"),
+                receipt(exit = "17:00")
+            )
+        ).getValue("22/10/2026")
+
+        assertEquals(480, day.minutes)
+        assertEquals("17:00", day.exitTime)
+    }
+
+    @Test
+    fun `saida sem entrada nao informa saida pareada`() {
+        val day = WorkStatsCalculator.dayStats(listOf(receipt(exit = "06:57"))).getValue("22/10/2026")
+
+        assertNull(day.exitTime)
+        assertFalse(day.exitCrossesMidnight)
+    }
+
+    @Test
+    fun `entrada sem saida nao informa saida pareada`() {
+        val day = WorkStatsCalculator.dayStats(listOf(receipt(entry = "22:00"))).getValue("22/10/2026")
+
+        assertNull(day.exitTime)
+        assertFalse(day.exitCrossesMidnight)
+    }
+
+    @Test
+    fun `horario sem tipo nao informa saida pareada`() {
+        val day = WorkStatsCalculator.dayStats(listOf(receipt(workTime = "22:00"))).getValue("22/10/2026")
+
+        assertNull(day.exitTime)
+        assertFalse(day.exitCrossesMidnight)
+    }
+
+    @Test
+    fun `ocorrencia nao informa saida pareada`() {
+        val day = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00", exit = "17:00", occurrence = DayOccurrence.ABSENCE))
+        ).getValue("22/10/2026")
+
+        assertNull(day.exitTime)
+        assertFalse(day.exitCrossesMidnight)
+    }
+
+    @Test
+    fun `batida incompleta adicional invalida a saida do dia`() {
+        val day = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00", exit = "12:00"), receipt(entry = "13:00"))
+        ).getValue("22/10/2026")
+
+        assertEquals(240, day.minutes)
+        assertNull(day.exitTime)
+        assertFalse(day.exitCrossesMidnight)
+    }
+
+    @Test
+    fun `dia sem registro nao possui metadados de saida`() {
+        val days = WorkStatsCalculator.dayStats(emptyList())
+
+        assertNull(days["22/10/2026"]?.exitTime)
+        assertFalse(days.containsKey("22/10/2026"))
+    }
+
+    @Test
+    fun `metadados de saida nao alteram os minutos calculados`() {
+        val day = WorkStatsCalculator.dayStats(
+            listOf(receipt(entry = "08:00", exit = "17:00"))
+        ).getValue("22/10/2026")
+
+        assertEquals(540, day.minutes)
+        assertEquals("17:00", day.exitTime)
     }
 
     @Test

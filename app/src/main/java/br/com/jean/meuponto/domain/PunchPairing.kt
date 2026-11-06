@@ -26,6 +26,13 @@ internal class PairedShift(
     val occurrence: DayOccurrence? = null
 )
 
+/** Saída da última jornada válida de um dia, mantida pelo mesmo passe que calcula os minutos. */
+internal data class PairedExit(
+    val time: String,
+    val crossesMidnight: Boolean,
+    val at: LocalDateTime
+)
+
 /**
  * Saída de um único passe ([PunchPairing.pair]). [minutesByDate] e [issuesByDate] são as horas e as
  * pendências por dia; [shifts] são os turnos. Os três saem do mesmo passe, então não podem divergir.
@@ -33,7 +40,8 @@ internal class PairedShift(
 internal class PairingResult(
     val minutesByDate: Map<String, Int>,
     val issuesByDate: Map<String, Set<DayIssue>>,
-    val shifts: List<PairedShift>
+    val shifts: List<PairedShift>,
+    val lastExitByDate: Map<String, PairedExit>
 )
 
 /**
@@ -81,9 +89,10 @@ internal object PunchPairing {
         private val minutesByDate = mutableMapOf<String, Int>()
         private val issuesByDate = mutableMapOf<String, MutableSet<DayIssue>>()
         private val shifts = mutableListOf<PairedShift>()
+        private val lastExitByDate = mutableMapOf<String, PairedExit>()
         private val dated = mutableListOf<DatedPunch>()
 
-        fun result() = PairingResult(minutesByDate, issuesByDate, shifts)
+        fun result() = PairingResult(minutesByDate, issuesByDate, shifts, lastExitByDate)
 
         /**
          * Classifica um comprovante. Motivos que são do próprio comprovante (data desconhecida,
@@ -140,6 +149,9 @@ internal object PunchPairing {
                 ownIssues + DayIssue.IMPLAUSIBLE_SHIFT
             }
             if (worked != null) addMinutes(key, worked)
+            if (worked != null) {
+                recordExit(key, ShiftPunch(receipt, entry), ShiftPunch(receipt, exit))
+            }
             shifts += PairedShift(
                 key,
                 ShiftPunch(receipt, entry),
@@ -250,6 +262,7 @@ internal object PunchPairing {
             val worked = Duration.between(entry.at, exit.at).toMinutes().toInt()
             if (worked > 0) {
                 addMinutes(entry.key, worked)
+                recordExit(entry.key, entry.shiftPunch(), exit.shiftPunch())
                 shifts += PairedShift(
                     entry.key, entry.shiftPunch(), exit.shiftPunch(),
                     listOf(entry.receipt, exit.receipt), worked, emptySet()
@@ -271,6 +284,22 @@ internal object PunchPairing {
 
         private fun addMinutes(key: String, minutes: Int) {
             minutesByDate[key] = (minutesByDate[key] ?: 0) + minutes
+        }
+
+        /** Registra a última saída cronológica sem iniciar um segundo passe de pareamento. */
+        private fun recordExit(key: String, entry: ShiftPunch, exit: ShiftPunch) {
+            val entryDate = WorkStatsCalculator.parseWorkDate(entry.receipt.workDate) ?: return
+            val exitDate = WorkStatsCalculator.parseWorkDate(exit.receipt.workDate) ?: return
+            val crossesMidnight = exitDate.isAfter(entryDate) ||
+                (exitDate == entryDate && exit.time.isBefore(entry.time))
+            val exitAt = exitDate.atTime(exit.time).let { instant ->
+                if (crossesMidnight && exitDate == entryDate) instant.plusDays(1) else instant
+            }
+            val candidate = PairedExit(exit.time.toString(), crossesMidnight, exitAt)
+            val previous = lastExitByDate[key]
+            if (previous == null || previous.at.isBefore(candidate.at)) {
+                lastExitByDate[key] = candidate
+            }
         }
     }
 
