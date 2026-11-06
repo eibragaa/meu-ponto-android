@@ -263,12 +263,6 @@ fun InsightsSheet(
                 )
             }
 
-            MonthHeatCard(
-                stats = stats,
-                expectedDailyMinutes = expectedDailyMinutes,
-                onSelectDay = onSelectDay
-            )
-
             InsightCard(
                 icon = Icons.Outlined.Schedule,
                 title = "Horas trabalhadas",
