@@ -4,6 +4,8 @@ _Atualizado em 27/10/2026. Versão publicada: `v0.6.6` (`versionCode 16`).
 
 Este documento registra o que foi feito, o estado atual, os problemas conhecidos e os próximos passos. Complementa o [`roadmap-aaa.md`](roadmap-aaa.md), que é o plano por sprints.
 
+_Atualizado em 06/11/2026. Versão publicada: `v0.8.1` (`versionCode 19`). Beta atual: `beta-v190003 — Meu Ponto Beta • 0.8.1` (pre-release, 06/11 16:19Z)._
+
 ---
 
 ## 0. Resumo do dia (22/10/2026)
@@ -18,6 +20,19 @@ Este documento registra o que foi feito, o estado atual, os problemas conhecidos
 - Docs e código no `main` sincronizados com o remote.
 
 **Pendente para amanhã:** migrar o celular e testar. Ver seção 7.
+
+---
+
+## 0. Resumo do dia (06/11/2026) — beta semanal + calendário
+
+- `feat-beta-release-flow` (PR #6): flavors beta (`playBeta`/`githubBeta`, `applicationId.beta`, `versionCode 190001+`), workflows `beta.yml` (qualquer momento) e `consolidacao.yml` (sexta 22:00 BRT), updater oficial ignora `prerelease`/`beta-v*`.
+- `fix-beta-test-parser` (PR #7): remove teste `parseLatestRelease` direto (`org.json` stub lança `RuntimeException` no JVM) — run `42244048041` falhou, `42245239766` verde. **Licão:** teste de parse JSON não roda em unit test JVM puro; usar `evaluateRelease` puro.
+- `fix-beta-nome-descricao` (PR #8): nome comercial `Meu Ponto Beta • 0.8.1`, label `Meu Ponto Beta`, APK curto `Meu-Ponto-Beta-*.apk`, descrição estilo Duolingo consistente (`Novidades`/`Correções`/`Como instalar`).
+- `feat-animacoes-insights` (PR #9): **8 commits estavam só na branch** (calendário período todo, rolagem, reloginho, animação compacta, splash, meses explícitos) — por isso `beta-v190001` veio sem calendário. Merge `main` → branch sem conflito, compile ok.
+- `fix-insights-calendario-unico` (PR #10): remove `MonthHeatCard` duplicado; `InsightsSheet` fica só com `CompactMonthCalendar`. Corrige “3 calendários empilhados” (período 3 meses = 1 compacto + 3 grades).
+- Betas publicados: `beta-v190001` (sem animação), `beta-v190002` (com animação, mas 3 calendários), **`beta-v190003` (calendário único, correto)**. Tudo pre-release, `latest` permanece `v0.8.1`.
+
+**Observação no celular (06/11):** calendário voltou no beta, mas **sem meses retroativos e sem animação do relógio** — aceito provisório; backlog vira P22 (abaixo).
 
 ---
 
@@ -243,7 +258,18 @@ Parte do Sprint 0 e 1 já estava implementada antes desta rodada e foi commitada
 ### 3.0 Releases publicadas
 | Versão | Data | Estado | Assets | Assinatura |
 |---|---|---|---|---|
-| **`v0.6.6`** | 27/10/2026 01:11 UTC | **Latest** | `Meu-Ponto-v0.6.6.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| **`v0.8.1`** | 03/11/2026 17:16 UTC | **Latest** | `Meu-Ponto-v0.8.1.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+| `v0.8.0` | 03/11/2026 16:34 UTC | Anterior | `Meu-Ponto-v0.8.0.apk`, `app-play-release.aab` | Keystore novo |
+| `v0.7.0` | 27/10/2026 | Anterior | `Meu-Ponto-v0.7.0.apk`, `app-play-release.aab` | Keystore novo |
+| **`v0.6.6`** | 27/10/2026 01:11 UTC | Anterior | `Meu-Ponto-v0.6.6.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
+
+**Betas (pre-release, `applicationId.beta`, `versionCode 190001+`):**
+
+| Tag | Nome comercial | Data | Assets | Observação |
+|---|---|---|---|---|
+| `beta-v190003` | `Meu Ponto Beta • 0.8.1` | 06/11 16:19Z | `Meu-Ponto-Beta-0.8.1.apk` + `-updater.apk` | Calendário único (correto) |
+| `beta-v190002` | `Meu Ponto Beta • 0.8.1` | 06/11 16:05Z | idem | 3 calendários empilhados |
+| `beta-v190001` | `Beta 190001 — 0.8.1` (nome antigo) | 06/11 15:46Z | `Meu-Ponto-beta-v190001-*.apk` | Sem calendário (branch não mergeada) |
 | `v0.6.5` | 23/10/2026 16:52 UTC | Anterior | `Meu-Ponto-v0.6.5.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.4` | 23/10/2026 15:48 UTC | Anterior | `Meu-Ponto-v0.6.4.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
 | `v0.6.3` | 23/10/2026 12:47 UTC | Anterior | `Meu-Ponto-v0.6.3.apk`, `app-play-release.aab` | Keystore novo (`4ef464d5…`) |
@@ -331,21 +357,31 @@ Reescrita com estrutura LGPD (controlador, base legal por dado, segurança e ret
 | P19 | Editor: "Só entrada" ou "Só saída" salvava também o outro horário (ex.: entrada e saída iguais para um comprovante só com horário) | Horas e pendências erradas | **Corrigido e publicado na `v0.5.1`**: só salva o tipo escolhido |
 | P20 | "Revisar" no cabeçalho do dia não explica o motivo (ex.: saída sem entrada no dia anterior). O aviso no card some ao salvar, mas o dia continua pendente | Usuário acha que não salvou | **Corrigido e publicado na `v0.6.2`**: `WorkDayStats.issues` + motivo no cabeçalho |
 | P21 | Turno noturno com "só entrada" + "só saída" **no mesmo dia** quebra o pareamento cross-midnight (saída 07:05 fica "antes" da entrada 22:47) → dia "entrada sem saída" com 0h | Horas zeradas / "Revisar" em turno que cruza a meia-noite | **Decisão (27/10): não alterar código.** Corrigir a data da saída para o dia seguinte, ou juntar entrada+saída num comprovante só. Melhoria de pareamento adiada até confirmação |
+| P22 | Beta Insights: calendário voltou, mas **sem meses retroativos e sem animação do relógio** (relogio girando nos dias incompletos + grade do período todo) | Usuario nao consegue ver meses anteriores nem o sinal de pendência animado | **Backlog (aceito provisório 06/11).** Falta restaurar `monthWeeks`/`CompactMonthCalendar` com meses retroativos e `Animatable`/`ValueAnimator` do relógio. |
+| P23 | Beta updater não atualiza sozinho (`/releases/latest` ignora `prerelease`) | Todo beta exige download manual do APK | **Backlog:** canal beta separado (`/releases` lista filtrando `beta-v*`, compara `versionCode 190001+`) para `githubBeta`. Oficial continua em `/latest`. |
+| P24 | Calendário triplicado no Insights (`CompactMonthCalendar` + `MonthHeatCard` com loop de meses) | Período 3 meses = 4 grades empilhadas | **Corrigido**: remove `MonthHeatCard` (PR #10). Verificar `MonthHeatGrid`/`HeatDayCell` mortas para deletar. |
+| P25 | Backup sem senha = ZIP em claro; PBKDF2 120k (OWASP atual ≥600k) | ZIP vazado = horas/imagens legíveis | Backlog segurança: aviso “sem senha = legível” + bump PBKDF2 600k versionado ou Argon2id. |
+| P26 | DB + imagens em claro em `filesDir/receipts/` | Roubo/root lê horas sem app lock | Backlog: SQLCipher ou documentar “sem app lock” na política; `FLAG_SECURE` opcional no visualizador. |
+| P27 | `signingConfig.debug` fallback em release sem Secrets | Release local sem Secrets sai debug silencioso | Backlog: falhar build release sem Secrets em CI; local mantém debug só com flag explicita. |
 
 ---
 
 ## 7. Próximos passos
 
-### 7.0 Retomar daqui (27/10/2026)
-- Release `v0.6.6` é a **Latest** (seção 1.23); `main` tem o schema `3.json` commitado (`519ec97`).
+### 7.0 Retomar daqui (06/11/2026)
+- Latest oficial: `v0.8.1` (`versionCode 19`). Beta correto: `beta-v190003 — Meu Ponto Beta • 0.8.1` (1 calendário).
 - **Em aberto, em ordem sugerida:**
-  1. ~~Gerar e commitar `app/schemas/.../3.json`~~ — **feito** (commit `519ec97`, seção 1.23).
-  2. Validar no aparelho: instalar `Meu-Ponto-v0.6.6.apk` e conferir que batida única não prende mais o
+  1. **P22 — calendário incompleto no beta:** voltar meses retroativos + animação do relógio nos dias incompletos + grade do período todo. Hoje só mês atual do período (compacto).
+  2. **P23 — beta updater automático:** canal beta (`githubBeta` checa lista `beta-v*` por `versionCode`; `github` checa `/latest`). Elimina download manual a cada beta.
+  3. **P24 (limpeza):** deletar `MonthHeatGrid`/`HeatDayCell` mortas de `InsightsSheet.kt` (restaram após PR #10) + `stepCompactMonth`/`initialCompactMonth` se sobraram.
+  4. **Segurança (P25–P27):** aviso backup sem senha, PBKDF2 600k versionado, `FLAG_SECURE` opcional, proibir `debug` em release CI.
+  5. ~~Gerar e commitar `app/schemas/.../3.json`~~ — **feito** (commit `519ec97`, seção 1.23).
+  6. Validar no aparelho: instalar `Meu-Ponto-v0.6.6.apk` e conferir que batida única não prende mais o
      "Revisar"; QA do editor, migração real 2→3, swipe, ícone/splash e aviso de atualização.
-  3. **Turno noturno com entrada e saída no mesmo dia** (P21): o pareamento cross-midnight exige saída
+  7. **Turno noturno com entrada e saída no mesmo dia** (P21): o pareamento cross-midnight exige saída
      datada no dia seguinte (ou entrada+saída juntas). Decisão do dono (27/10): não alterar código; ele
      corrige as datas na mão. Melhoria de pareamento adiada até confirmação explícita.
-  4. Decidir se falta, folga e atestado devem ser neutros no saldo (hoje contam como dia trabalhado com 0h).
+  8. Decidir se falta, folga e atestado devem ser neutros no saldo (hoje contam como dia trabalhado com 0h).
 - Build local segue inviável no Termux (sem Android SDK/Gradle): validar pelo `android-release.yml`
   (`workflow_dispatch`). O `Empty schema file` do KSP ficou resolvido com o `3.json` commitado.
 

@@ -73,4 +73,14 @@ Toda release segue o mesmo esqueleto, em pt-BR, tom quente e direto.
 
 | Tag | Data | Commit | Observação |
 |---|---|---|---|
-| `beta-v190001` | 06/11/2026 | `48b127d` | Primeiro beta publicado (pre-release). Instalado no celular ✅ |
+| `beta-v190003` | 06/11/2026 16:19Z | `fdaa4bb` (PR #10) | Calendário único (correto). Instalado no celular ✅ |
+| `beta-v190002` | 06/11/2026 16:05Z | `fd849ba` (PR #9) | Com animação, mas 3 calendários empilhados |
+| `beta-v190001` | 06/11/2026 15:46Z | `48b127d` (PR #7) | Sem calendário (feat estava só na branch `feat-animacoes-insights`) |
+
+## Aprendizados 06/11
+
+1. **Merge faltando:** feature em branch sem merge não entra no beta (`beta.yml` builda da `main`). PR #9 resolveu.
+2. **Duplicação de calendário:** `CompactMonthCalendar` + `MonthHeatCard` = N+1 grades. PR #10 removeu `MonthHeatCard`.
+3. **Teste `org.json` não roda no JVM:** `parseLatestRelease` direto lança `RuntimeException` (stub). Testar via `evaluateRelease` puro.
+4. **Beta não atualiza sozinho:** `/releases/latest` ignora `prerelease`. Beta precisa download manual até P23 (canal beta separado).
+5. **Validação no celular:** calendário voltou, mas **sem meses retroativos e sem animação do relógio** — registrado como P22, aceito provisório.
