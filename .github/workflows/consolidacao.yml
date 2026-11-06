@@ -70,13 +70,24 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_version.outputs.tag }}
-          name: "Meu Ponto ${{ steps.release_version.outputs.tag }}"
+          name: "Meu Ponto • ${{ steps.release_version.outputs.tag }}"
           body: |
-            Release oficial consolidada a partir do beta da semana.
-            - `Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk`: app oficial com updater (flavor github).
-            - `app-play-release.aab`: AAB da flavor play.
+            ## ✨ Nova versão disponível
 
-            O updater oficial procura este release (latest). Betas (`beta-v*`, prerelease) não são oferecidos como atualização.
+            **Meu Ponto • ${{ steps.release_version.outputs.tag }}** — tudo que foi testado no beta da semana, agora oficial.
+
+            ## Novidades
+            - (descreva aqui o que entrou, 2–3 itens no máximo)
+
+            ## Correções e melhorias
+            - (o que ficou mais rápido, mais claro ou mais seguro)
+
+            ## Como atualizar
+            - O app **já busca sozinho** esta versão (updater automático).
+            - Quer baixar manual? Pegue `Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk` abaixo.
+            - Betas (`beta-v*`) não aparecem como atualização oficial.
+
+            **Obrigado!** Qualquer feedback ajuda a próxima versão.
           draft: false
           prerelease: false
           files: |
