@@ -1,0 +1,95 @@
+name: Consolidar Beta -> Release Oficial (sexta)
+
+on:
+  schedule:
+    # Sexta 22:00 BRT = sabado 01:00 UTC
+    - cron: '0 1 * * 6'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-24.04
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compute next official version
+        id: release_version
+        shell: bash
+        run: |
+          CURRENT_CODE=$(./gradlew -q :app:printReleaseVersionCode --no-daemon | tail -1)
+          CURRENT_NAME=$(./gradlew -q :app:printVersionName --no-daemon | tail -1)
+          NEXT_CODE=$((CURRENT_CODE + 1))
+          # Bump patch: 0.8.1 -> 0.8.2
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_NAME"
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_NAME="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+          echo "version_code=$NEXT_CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$NEXT_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=v${NEXT_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit tests
+        run: ./gradlew :app:testPlayDebugUnitTest :app:testGithubDebugUnitTest :app:testPlayBetaDebugUnitTest :app:testGithubBetaDebugUnitTest --no-daemon -PversionCodeOverride=${{ steps.release_version.outputs.version_code }} -PversionNameOverride=${{ steps.release_version.outputs.version_name }}
+
+      - name: Run lint
+        run: ./gradlew :app:lintPlayDebug :app:lintGithubDebug :app:lintPlayRelease :app:lintGithubRelease --no-daemon -PversionCodeOverride=${{ steps.release_version.outputs.version_code }} -PversionNameOverride=${{ steps.release_version.outputs.version_name }}
+
+      - name: Prepare release keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        shell: bash
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/meu-ponto-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/meu-ponto-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build official APKs
+        run: ./gradlew :app:assembleGithubRelease :app:bundlePlayRelease --no-daemon -PversionCodeOverride=${{ steps.release_version.outputs.version_code }} -PversionNameOverride=${{ steps.release_version.outputs.version_name }}
+
+      - name: Rename official APK
+        shell: bash
+        run: |
+          cp app/build/outputs/apk/github/release/app-github-release.apk "app/build/outputs/apk/github/release/Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk"
+
+      - name: Publish official release (latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_version.outputs.tag }}
+          name: "Meu Ponto • ${{ steps.release_version.outputs.tag }}"
+          body: |
+            ## ✨ Nova versão disponível
+
+            **Meu Ponto • ${{ steps.release_version.outputs.tag }}** — tudo que foi testado no beta da semana, agora oficial.
+
+            ## Novidades
+            - (descreva aqui o que entrou, 2–3 itens no máximo)
+
+            ## Correções e melhorias
+            - (o que ficou mais rápido, mais claro ou mais seguro)
+
+            ## Como atualizar
+            - O app **já busca sozinho** esta versão (updater automático).
+            - Quer baixar manual? Pegue `Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk` abaixo.
+            - Betas (`beta-v*`) não aparecem como atualização oficial.
+
+            **Obrigado!** Qualquer feedback ajuda a próxima versão.
+          draft: false
+          prerelease: false
+          files: |
+            app/build/outputs/apk/github/release/Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk
+            app/build/outputs/bundle/playRelease/app-play-release.aab

@@ -1,0 +1,110 @@
+name: Beta Semanal (playBeta + githubBeta)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-beta:
+    runs-on: ubuntu-24.04
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compute next beta versionCode
+        id: beta_version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST=$(gh release list --limit 50 --json tagName --jq '.[] | select(.tagName | startswith("beta-v")) | .tagName' | head -1 || true)
+          if [ -z "$LATEST" ]; then
+            NEXT=190001
+          else
+            CURRENT=${LATEST#beta-v}
+            NEXT=$((CURRENT + 1))
+          fi
+          BASE_NAME=$(./gradlew -q :app:printVersionName --no-daemon | tail -1)
+          echo "beta_version_code=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "beta_version_name=${BASE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "tag=beta-v${NEXT}" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit tests (beta flavors)
+        run: ./gradlew :app:testPlayBetaDebugUnitTest :app:testGithubBetaDebugUnitTest --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
+
+      - name: Run lint (beta flavors)
+        run: ./gradlew :app:lintPlayBetaDebug :app:lintGithubBetaDebug :app:lintPlayBetaRelease :app:lintGithubBetaRelease --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
+
+      - name: Prepare release keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        shell: bash
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/meu-ponto-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/meu-ponto-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build beta APKs
+        run: ./gradlew :app:assemblePlayBetaRelease :app:assembleGithubBetaRelease --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
+
+      - name: Rename beta APKs
+        shell: bash
+        run: |
+          cp app/build/outputs/apk/playBeta/release/app-playBeta-release.apk "app/build/outputs/apk/playBeta/release/Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}.apk" || true
+          cp app/build/outputs/apk/githubBeta/release/app-githubBeta-release.apk "app/build/outputs/apk/githubBeta/release/Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk" || true
+
+      - name: Upload beta APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: meu-ponto-beta-apk
+          path: |
+            app/build/outputs/apk/*/release/Meu-Ponto-Beta-*.apk
+
+      - name: Publish beta release (pre-release, nao vira latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.beta_version.outputs.tag }}
+          name: "Meu Ponto Beta • ${{ steps.beta_version.outputs.beta_version_name }}"
+          body: |
+            ## ⚡️ Novo beta disponível
+
+            **Meu Ponto Beta • ${{ steps.beta_version.outputs.beta_version_name }}** — pré-view do que vem sexta. Instale, teste e conte o que achou.
+
+            ## Novidades
+            - (descreva aqui o que entrou nesta semana, 2–3 itens no máximo)
+
+            ## Correções e melhorias
+            - (correções que você vai notar no uso diário)
+
+            ## Como instalar
+            - Baixe o APK abaixo (`Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk`) e instale.
+            - Aparece como **Meu Ponto Beta** na tela inicial, ao lado do app oficial.
+            - Convive com o app oficial (`br.com.jean.meuponto.beta`).
+            - Este beta **não** vira atualização automática. A versão oficial sai sexta 22:00 BRT.
+
+            ## Qual arquivo baixar?
+            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk` — em geral é este: busca sozinho a próxima versão.
+            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}.apk` — sem updater, só teste manual.
+
+            **Obrigado por testar!** Qualquer bug, conta aqui.
+          draft: false
+          prerelease: true
+          files: |
+            app/build/outputs/apk/playBeta/release/Meu-Ponto-Beta-*.apk
+            app/build/outputs/apk/githubBeta/release/Meu-Ponto-Beta-*.apk

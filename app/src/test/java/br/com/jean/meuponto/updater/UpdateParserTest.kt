@@ -45,13 +45,17 @@ class UpdateParserTest {
         tag: String = "v0.5.2",
         name: String = "Meu Ponto 0.5.2",
         body: String = "Correções e melhorias",
-        assets: List<ApkAsset> = listOf(apk())
+        assets: List<ApkAsset> = listOf(apk()),
+        isPrerelease: Boolean = false,
+        isBetaTag: Boolean = false
     ) = ReleasePayload(
         tag = tag,
         name = name,
         body = body,
         releaseUrl = releaseUrl,
-        assets = assets
+        assets = assets,
+        isPrerelease = isPrerelease,
+        isBetaTag = isBetaTag
     )
 
     @Test
@@ -157,6 +161,22 @@ class UpdateParserTest {
 
         assertTrue(result is UpdateCheckResult.Available)
         assertEquals("0.5.2", (result as UpdateCheckResult.Available).info.versionName)
+    }
+
+    @Test
+    fun `prerelease beta nao vira atualizacao oficial`() {
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateRelease(release(tag = "beta-v190001", isPrerelease = true, isBetaTag = true), currentVersion = "0.5.1")
+        )
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateRelease(release(tag = "v9.9.9", isPrerelease = true), currentVersion = "0.5.1")
+        )
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateRelease(release(tag = "beta-v190002", isBetaTag = true), currentVersion = "0.5.1")
+        )
     }
 
     @Test

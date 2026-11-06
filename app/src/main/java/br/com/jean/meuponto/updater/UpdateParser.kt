@@ -28,7 +28,11 @@ internal data class ReleasePayload(
     val name: String,
     val body: String,
     val releaseUrl: String,
-    val assets: List<ApkAsset>
+    val assets: List<ApkAsset>,
+    /** `true` quando o GitHub marcou a release como prerelease (beta). O updater ignora betas. */
+    val isPrerelease: Boolean = false,
+    /** `true` quando a tag casa com o padrão `beta-v*` (beta). O updater ignora betas. */
+    val isBetaTag: Boolean = false,
 )
 
 /**
@@ -43,6 +47,8 @@ internal fun parseLatestRelease(json: String): ReleasePayload? {
         val root = JSONObject(json)
         val tag = root.optString("tag_name", "").trim()
         if (tag.isBlank()) return null
+        if (root.optBoolean("prerelease", false)) return null
+        if (tag.startsWith("beta-", ignoreCase = true)) return null
 
         val assetsJson = root.optJSONArray("assets")
         val assets = (0 until (assetsJson?.length() ?: 0)).mapNotNull { index ->
@@ -79,6 +85,8 @@ internal fun parseLatestRelease(json: String): ReleasePayload? {
  * usa o primeiro `.apk` com URL de download.
  */
 internal fun evaluateRelease(payload: ReleasePayload, currentVersion: String): UpdateCheckResult {
+    if (payload.isPrerelease || payload.isBetaTag) return UpdateCheckResult.UpToDate
+    if (payload.tag.startsWith("beta-", ignoreCase = true)) return UpdateCheckResult.UpToDate
     val remoteVersion = payload.tag.trim().trimStart('v', 'V')
     if (remoteVersion.isBlank()) {
         return UpdateCheckResult.Failed(UpdateFailure.INVALID_RESPONSE)
