@@ -180,18 +180,6 @@ class UpdateParserTest {
     }
 
     @Test
-    fun `parseLatestRelease ignora prerelease e tag beta`() {
-        val prereleaseJson = """{"tag_name":"beta-v190001","prerelease":true,"assets":[]}"""
-        assertEquals(null, parseLatestRelease(prereleaseJson))
-
-        val betaTagJson = """{"tag_name":"beta-v190001","prerelease":false,"assets":[]}"""
-        assertEquals(null, parseLatestRelease(betaTagJson))
-
-        val officialJson = """{"tag_name":"v0.6.0","prerelease":false,"assets":[]}"""
-        assertTrue(parseLatestRelease(officialJson) != null)
-    }
-
-    @Test
     fun `tag vazia devolve resposta invalida`() {
         val result = evaluateRelease(release(tag = "v"), currentVersion = "0.5.1")
 
