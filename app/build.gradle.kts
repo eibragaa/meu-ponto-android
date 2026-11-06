@@ -9,6 +9,11 @@ android {
     namespace = "br.com.jean.meuponto"
     compileSdk = 36
     val localTestSuffix = providers.gradleProperty("localTestSuffix").orNull ?: ""
+    val versionCodeOverride = providers.gradleProperty("versionCodeOverride").orNull?.toIntOrNull()
+    val versionNameOverride = providers.gradleProperty("versionNameOverride").orNull
+    val betaVersionCodeOverride = providers.gradleProperty("betaVersionCodeOverride").orNull?.toIntOrNull()
+        ?: providers.gradleProperty("betaBaseVersionCode").orNull?.toIntOrNull() ?: 190001
+    val betaVersionNameOverride = providers.gradleProperty("betaVersionNameOverride").orNull
     val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
     val releaseKeystorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
     val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
@@ -28,8 +33,8 @@ android {
         applicationId = "br.com.jean.meuponto$localTestSuffix"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "0.8.1"
+        versionCode = versionCodeOverride ?: 19
+        versionName = versionNameOverride ?: "0.8.1"
     }
     buildFeatures { compose = true; buildConfig = true }
     flavorDimensions += "distribution"
@@ -40,6 +45,26 @@ android {
         }
         create("github") {
             dimension = "distribution"
+            buildConfigField("boolean", "UPDATER_ENABLED", "true")
+        }
+        create("playBeta") {
+            dimension = "distribution"
+            applicationIdSuffix = ".beta$localTestSuffix"
+            versionNameSuffix = "-beta"
+            versionCode = betaVersionCodeOverride
+            if (betaVersionNameOverride != null) {
+                versionName = betaVersionNameOverride
+            }
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+        }
+        create("githubBeta") {
+            dimension = "distribution"
+            applicationIdSuffix = ".beta$localTestSuffix"
+            versionNameSuffix = "-beta"
+            versionCode = betaVersionCodeOverride
+            if (betaVersionNameOverride != null) {
+                versionName = betaVersionNameOverride
+            }
             buildConfigField("boolean", "UPDATER_ENABLED", "true")
         }
     }
@@ -58,6 +83,26 @@ android {
 }
 
 kotlin { jvmToolchain(17) }
+
+// Tasks para workflows (beta/consolidação) lerem a versão sem editar o arquivo.
+tasks.register("printReleaseVersionCode") {
+    doLast {
+        println(project.android.defaultConfig.versionCode)
+    }
+}
+
+tasks.register("printVersionName") {
+    doLast {
+        println(project.android.defaultConfig.versionName)
+    }
+}
+
+tasks.register("printBetaVersionCode") {
+    doLast {
+        val beta = project.android.productFlavors.findByName("playBeta")
+        println(beta?.versionCode ?: "unknown")
+    }
+}
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
