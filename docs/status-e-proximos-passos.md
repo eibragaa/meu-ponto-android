@@ -379,3 +379,8 @@ Checklist do release publicado: [`plano-release-v0.5.1.md`](plano-release-v0.5.1
 - Qual pessoa ou canal será o encarregado (LGPD)?
 - Manter o `v0.4.0` público, marcar como pré-release ou remover (P3)?
 - Validar visualmente o banner e o “O que há de novo” da `v0.6.2` no aparelho e planejar a próxima versão.
+
+## Ideia - Landing page com screenshots reais
+- Quando possível, tirar screenshots reais do app (via Termux:API ou ADB conectado) para criar galeria/carrossel premium na landing page (`meu-ponto-landing`).
+- Telas prioritárias: lista principal, detalhe do comprovante, scanner/OCR, insights/resumo de horas, modo escuro, exportação/PDF/backup.
+- Otimizar para web (.webp), adicionar ao repo da landing page e publicar via Netlify com deploy automático.
