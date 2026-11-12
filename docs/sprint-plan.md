@@ -20,6 +20,8 @@ pendente" enganosos e reduz a lista.
 
 **Aceite:** testes existentes de `dayStats`/`DayOccurrence` + novos verdes; `lint` sem erro.
 
+**Follow-up pendente (auditoria 2026-11-12, issue #12):** ao tocar dia no Insights, navegar para o dia agrupado no modo "Mês" sem busca textual (evita quebrar turno noturno) e adotar dias expandidos por padrão com foco no dia escolhido. Há protótipo local a portar para `origin/main`.
+
 ## Sprint 2 — Mapa do mês (Insights) · status: concluída
 
 Objetivo: grade do mês no `InsightsSheet` (estilo Samsung Health) — cada dia preenche conforme as
@@ -32,7 +34,7 @@ neutra; toque no dia filtra a lista por aquela data.
 
 **Aceite:** usa só `PeriodStats.days` (já calculado); sem duplicar regra de negócio; sem I/O na UI.
 
-## Sprint 3 — Lembretes proativos · status: em andamento
+## Sprint 3 — Lembretes proativos · status: em andamento (protótipo local a portar)
 
 Objetivo: aprender o horário típico de **entrada** e os dias de trabalho, e notificar para lembrar
 de "bater o ponto"; lembrete extra quando há entrada sem saída (turno de madrugada).
@@ -42,6 +44,15 @@ de "bater o ponto"; lembrete extra quando há entrada sem saída (turno de madru
 - [ ] 3c Notificação: `ReminderScheduler` (`AlarmManager` **inexato** + `NotificationManager`),
       receiver no manifest, permissão `POST_NOTIFICATIONS` (Android 13+), reagendar quando os
       comprovantes mudam; lembrete de "falta saída".
+
+**Protótipo local (auditoria 2026-11-12, issue #13):** existe WIP não commitado (branch antiga
+`feat/lembretes-proativos`) cobrindo 3a/3b/3c em grande parte: domínio (`PunchHabitLearner`,
+`OpenEntry`/`hasOpenEntry`, `ReminderSettings`/`nextReminderAt`/`isReminderDay`), dados
+(`ReminderSettingsStore`, `ReminderScheduler`/`Receiver`/`Notifier`), UI (`ReminderSheet`, integração
+Insights/MainActivity), manifest/strings/drawable e testes de domínio. **Pendente:** portar e adaptar
+para `origin/main` (MainActivity/InsightsSheet atuais), decidir reagendamento pós-reboot
+(`RECEIVE_BOOT_COMPLETED`/`WorkManager`), ligar `hasOpenEntry` ao lembrete de saída pendente e
+validar UX de permissão/hábito insuficiente. Base local obsoleta — não aplicar como está.
 
 **Aceite:** notificação 100% local (sem servidor). Alarme inexato (sem permissão especial).
 `WorkManager`/alarme exato ficam como opção futura, só com OK do dono (dependência/permissão nova).
