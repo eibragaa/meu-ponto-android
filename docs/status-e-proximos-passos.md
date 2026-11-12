@@ -430,6 +430,15 @@ Checklist do release publicado: [`plano-release-v0.5.1.md`](plano-release-v0.5.1
 - Regras R8 testadas em release.
 - CI com `lintRelease`, `setup-java` v5 (P15).
 
+### 7.5 Backlog resgatado de cópias locais (auditoria 2026-11-12)
+
+Implementações locais encontradas em worktrees/cópias antigas do app, **não presentes em `origin/main`** (v0.8.2). Foram registradas como issues para implementação futura (portadas/adaptadas à base atual, não reaproveitar branches históricas como estão):
+
+- [ ] **#12 — Navegar do mapa/Insights para o dia agrupado no modo Mês + dias expandidos por padrão.** Corrige `onSelectDay` (hoje usa busca textual, o que quebra turno noturno) para abrir modo Mês/dia expandido sem filtro por texto; adota dias expandidos por padrão com foco no dia escolhido. Protótipo em `meu-ponto-fix` (`81329fd` + ajuste `collapsedDays`). Detalhes: https://github.com/eibragaa/meu-ponto-android/issues/12
+- [ ] **#13 — Lembrete proativo de batida (aprender hábito e notificar antes da entrada).** Domínio/dados/UI/testes prototipados em WIP `feat/lembretes-proativos`: `PunchHabitLearner`, `ReminderSettings`/`nextReminderAt`/`isReminderDay`, `OpenEntry` (`hasOpenEntry`), `ReminderSettingsStore/Scheduler/Receiver/Notifier`, `ReminderSheet`, integração Insights/MainActivity, `POST_NOTIFICATIONS`, strings e testes de domínio. Pendente portar para `origin/main`, definir reagendamento pós-reboot e eventual lembrete de saída pendente. Detalhes: https://github.com/eibragaa/meu-ponto-android/issues/13
+
+Após registro em issues/docs, as cópias locais obsoletas (`meu-ponto-fix`, `meu-ponto-sprint3`, `meu-ponto-eval`, `mp-repo`, `apkwork`, `package`) podem ser limpas.
+
 ---
 
 ## 8. Decisões que dependem de você
