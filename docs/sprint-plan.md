@@ -20,7 +20,7 @@ pendente" enganosos e reduz a lista.
 
 **Aceite:** testes existentes de `dayStats`/`DayOccurrence` + novos verdes; `lint` sem erro.
 
-**Follow-up pendente (auditoria 2026-11-12, issue #12):** ao tocar dia no Insights, navegar para o dia agrupado no modo "Mês" sem busca textual (evita quebrar turno noturno) e adotar dias expandidos por padrão com foco no dia escolhido. Há protótipo local a portar para `origin/main`.
+**Follow-up implementado (issue #13, branch `feat/beta-issues-12-13`):** ao tocar dia no Insights, `onSelectDay` limpa a busca textual (preservando turnos noturnos), seleciona filtro `Todos` e modo `Mês`, e usa `focusDayInMonthView` + `collapsedDays` (dias abertos por padrão, focando apenas o dia escolhido).
 
 ## Sprint 2 — Mapa do mês (Insights) · status: concluída
 
@@ -29,30 +29,23 @@ horas, com a jornada esperada (`expectedDailyMinutes`) como meta; pendente em Co
 neutra; toque no dia filtra a lista por aquela data.
 
 - [x] UI: grade 7 colunas no topo do `InsightsSheet`, mantendo os cards de números atuais.
-- [x] Navegação: `onSelectDay` → seta a busca pela data e fecha o sheet.
+- [x] Navegação: `onSelectDay` → navega para o dia agrupado no modo "Mês" via `focusDayInMonthView` e fecha o sheet.
 - [x] Regra pura: cor/legenda por célula como função pura testável (se introduzir lógica nova).
 
 **Aceite:** usa só `PeriodStats.days` (já calculado); sem duplicar regra de negócio; sem I/O na UI.
 
-## Sprint 3 — Lembretes proativos · status: em andamento (protótipo local a portar)
+## Sprint 3 — Lembretes proativos · status: implementada para beta (issue #12)
 
 Objetivo: aprender o horário típico de **entrada** e os dias de trabalho, e notificar para lembrar
-de "bater o ponto"; lembrete extra quando há entrada sem saída (turno de madrugada).
+de "bater o ponto"; regra pura `hasOpenEntry` pronta para identificar entrada sem saída.
 
-- [ ] 3a Domínio: `PunchHabitLearner` (horário típico de entrada + dias de trabalho), puro + testado.
-- [ ] 3b Config: `ReminderSettings` + store em `SharedPreferences` + sheet "Lembretes".
-- [ ] 3c Notificação: `ReminderScheduler` (`AlarmManager` **inexato** + `NotificationManager`),
-      receiver no manifest, permissão `POST_NOTIFICATIONS` (Android 13+), reagendar quando os
-      comprovantes mudam; lembrete de "falta saída".
+- [x] 3a Domínio: `PunchHabitLearner`, `ReminderSettings` (`nextReminderAt`/`isReminderDay`) e `OpenEntry` (`hasOpenEntry`), puros e cobertos por 23 testes unitários.
+- [x] 3b Config: `ReminderSettingsStore` em `SharedPreferences` + `ReminderSheet` + botão em `InsightsSheet`.
+- [x] 3c Notificação: `ReminderScheduler` (`AlarmManager` **inexato** + `ReminderNotifier`/`ReminderReceiver`),
+      receiver `exported=false` no manifest, permissão `POST_NOTIFICATIONS` (Android 13+) e reagendamento
+      automático na `MainActivity` quando comprovantes ou config mudam.
 
-**Protótipo local (auditoria 2026-11-12, issue #13):** existe WIP não commitado (branch antiga
-`feat/lembretes-proativos`) cobrindo 3a/3b/3c em grande parte: domínio (`PunchHabitLearner`,
-`OpenEntry`/`hasOpenEntry`, `ReminderSettings`/`nextReminderAt`/`isReminderDay`), dados
-(`ReminderSettingsStore`, `ReminderScheduler`/`Receiver`/`Notifier`), UI (`ReminderSheet`, integração
-Insights/MainActivity), manifest/strings/drawable e testes de domínio. **Pendente:** portar e adaptar
-para `origin/main` (MainActivity/InsightsSheet atuais), decidir reagendamento pós-reboot
-(`RECEIVE_BOOT_COMPLETED`/`WorkManager`), ligar `hasOpenEntry` ao lembrete de saída pendente e
-validar UX de permissão/hábito insuficiente. Base local obsoleta — não aplicar como está.
+**Pendências opcionais futuras:** reagendamento pós-reboot (`RECEIVE_BOOT_COMPLETED`/`WorkManager`) e notificação dedicada para saída pendente usando `hasOpenEntry` (mantidos fora desta entrega para não introduzir permissões/dependências sem aprovação explícita).
 
 **Aceite:** notificação 100% local (sem servidor). Alarme inexato (sem permissão especial).
 `WorkManager`/alarme exato ficam como opção futura, só com OK do dono (dependência/permissão nova).

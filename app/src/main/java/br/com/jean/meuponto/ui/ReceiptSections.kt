@@ -13,21 +13,46 @@ import br.com.jean.meuponto.domain.WorkDayStats
  * Agrupamento da lista de comprovantes em meses, dias e grupos de filtro.
  */
 
+internal const val FILTER_ALL = "all"
+internal const val GROUP_MODE_MONTH = "month"
+
 internal data class FilterOption(val key: String, val label: String)
 
 internal val filters = listOf(
-    FilterOption("all", "Todos"),
+    FilterOption(FILTER_ALL, "Todos"),
     FilterOption("today", "Hoje"),
     FilterOption("time", "Com horário"),
     FilterOption("review", "Revisar")
 )
 
 internal val groupModes = listOf(
-    FilterOption("month", "Mês"),
+    FilterOption(GROUP_MODE_MONTH, "Mês"),
     FilterOption("day", "Dia"),
     FilterOption("week", "Semana"),
     FilterOption("none", "Lista")
 )
+
+/**
+ * Estado de expansão da visão "Mês" ao focar um dia específico (ex.: vindo do calendário de Insights).
+ *
+ * [expandedMonths] contém apenas o mês do dia selecionado (`yyyy-MM`), e [collapsedDays] contém
+ * todas as chaves de dia presentes nos comprovantes exceto [targetDate], mantendo só o dia alvo aberto.
+ */
+internal data class MonthFocusState(
+    val expandedMonths: Set<String>,
+    val collapsedDays: Set<String>
+)
+
+/**
+ * Calcula quais meses ficam expandidos e quais dias ficam recolhidos ao focar [targetDate] (`dd/MM/yyyy`).
+ */
+internal fun focusDayInMonthView(targetDate: String, receipts: List<Receipt>): MonthFocusState {
+    val allDayKeys = receipts.map { it.workDate.ifBlank { REVIEW_DATE_KEY } }.toSet()
+    return MonthFocusState(
+        expandedMonths = setOf(monthKey(targetDate)),
+        collapsedDays = allDayKeys - targetDate
+    )
+}
 
 internal data class ReceiptGroup(val title: String, val receipts: List<Receipt>)
 

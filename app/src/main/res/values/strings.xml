@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reminder_channel_name">Lembretes de ponto</string>
+    <string name="reminder_channel_description">Notificações locais para lembrar de registrar a entrada</string>
+    <string name="reminder_notification_title">Hora de bater o ponto</string>
+    <string name="reminder_notification_text">Registre sua entrada para não esquecer.</string>
+    <string name="reminder_sheet_title">Lembrete de ponto</string>
+    <string name="reminder_sheet_enable">Ativar lembrete antes da entrada</string>
+    <string name="reminder_sheet_lead_label">Avisar com antecedência de</string>
+    <string name="reminder_sheet_lead_minutes">%1$d min</string>
+    <string name="reminder_sheet_save">Salvar lembrete</string>
+    <string name="reminder_sheet_cancel">Cancelar</string>
+    <string name="insights_reminder_action">Lembrete de ponto</string>
+</resources>

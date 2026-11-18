@@ -1,10 +1,12 @@
 package br.com.jean.meuponto
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -123,6 +125,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import br.com.jean.meuponto.BuildConfig
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
+import br.com.jean.meuponto.data.ReminderNotifier
+import br.com.jean.meuponto.data.ReminderScheduler
+import br.com.jean.meuponto.data.ReminderSettingsStore
 import br.com.jean.meuponto.data.cleanupUpdateAndPdfCaches
 import br.com.jean.meuponto.data.copyToPrivateStorage
 import br.com.jean.meuponto.data.createBackup
@@ -134,6 +139,7 @@ import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.PayrollSettingsStore
 import br.com.jean.meuponto.domain.PeriodStats
 import br.com.jean.meuponto.domain.PunchChoice
+import br.com.jean.meuponto.domain.PunchHabitLearner
 import br.com.jean.meuponto.domain.WorkStatsCalculator
 import br.com.jean.meuponto.domain.dayIssueLabel
 import br.com.jean.meuponto.domain.DayPunchStatus
@@ -150,6 +156,8 @@ import br.com.jean.meuponto.domain.receiptTimeLabel
 import br.com.jean.meuponto.ui.Coral
 import br.com.jean.meuponto.ui.DaySection
 import br.com.jean.meuponto.ui.DeleteReceiptDialog
+import br.com.jean.meuponto.ui.FILTER_ALL
+import br.com.jean.meuponto.ui.GROUP_MODE_MONTH
 import br.com.jean.meuponto.ui.HeroNightBottom
 import br.com.jean.meuponto.ui.HeroNightMuted
 import br.com.jean.meuponto.ui.HeroNightNumber
@@ -164,6 +172,7 @@ import br.com.jean.meuponto.ui.MonthSection
 import br.com.jean.meuponto.ui.PayrollSettingsSheet
 import br.com.jean.meuponto.ui.PtBrLocale
 import br.com.jean.meuponto.ui.ReceiptViewer
+import br.com.jean.meuponto.ui.ReminderSheet
 import br.com.jean.meuponto.ui.SwipeToDeleteBox
 import br.com.jean.meuponto.ui.TealDark
 import br.com.jean.meuponto.ui.UpdateBanner
@@ -171,6 +180,7 @@ import br.com.jean.meuponto.ui.WhatsNewSheet
 import br.com.jean.meuponto.ui.buildMonthSections
 import br.com.jean.meuponto.ui.currentMonthKey
 import br.com.jean.meuponto.ui.filters
+import br.com.jean.meuponto.ui.focusDayInMonthView
 import br.com.jean.meuponto.ui.formatDateInput
 import br.com.jean.meuponto.ui.formatTimeInput
 import br.com.jean.meuponto.ui.groupModes
@@ -195,6 +205,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -269,8 +280,8 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     // Busca e organização da lista: em `rememberSaveable` para sobreviver a rotação e à recriação
     // do processo.
     var query by rememberSaveable { mutableStateOf("") }
-    var selectedFilter by rememberSaveable { mutableStateOf("all") }
-    var selectedGroupMode by rememberSaveable { mutableStateOf("month") }
+    var selectedFilter by rememberSaveable { mutableStateOf(FILTER_ALL) }
+    var selectedGroupMode by rememberSaveable { mutableStateOf(GROUP_MODE_MONTH) }
 
     // Uma flag por folha (bottom sheet) aberta. São mutuamente exclusivas na prática; unificá-las
     // em um único estado selado está registrado como pendência no padrão de engenharia (ENG-1).
@@ -279,6 +290,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var showOrganizeSheet by rememberSaveable { mutableStateOf(false) }
     var showPayrollSettings by rememberSaveable { mutableStateOf(false) }
     var showInsights by rememberSaveable { mutableStateOf(false) }
+    var showReminderSheet by rememberSaveable { mutableStateOf(false) }
     var backupPasswordDialog by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Registros em edição/exibição/exclusão: guardam o objeto inteiro para a folha não precisar
@@ -287,8 +299,9 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var receiptBeingViewed by remember { mutableStateOf<Receipt?>(null) }
     var receiptPendingDelete by remember { mutableStateOf<Receipt?>(null) }
     var payrollSettings by remember { mutableStateOf(PayrollSettingsStore.load(context)) }
+    var reminderSettings by remember { mutableStateOf(ReminderSettingsStore.load(context)) }
     var expandedMonths by remember { mutableStateOf(setOf(currentMonthKey())) }
-    var expandedDays by remember { mutableStateOf(emptySet<String>()) }
+    var collapsedDays by remember { mutableStateOf(emptySet<String>()) }
     var isProcessing by remember { mutableStateOf(false) }
     var isBackupProcessing by remember { mutableStateOf(false) }
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
@@ -334,8 +347,11 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         }
     }
 
-    val receipts by (if (query.isBlank()) dao.observeAll() else dao.search(query))
-        .collectAsState(initial = emptyList())
+    val allReceipts by remember(dao) { dao.observeAll() }.collectAsState(initial = emptyList())
+    val searchedReceipts by remember(dao, query) {
+        if (query.isBlank()) flowOf(emptyList()) else dao.search(query)
+    }.collectAsState(initial = emptyList())
+    val receipts = if (query.isBlank()) allReceipts else searchedReceipts
     val visibleReceipts = remember(receipts, selectedFilter) {
         when (selectedFilter) {
             "today" -> {
@@ -352,8 +368,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val visibleDayStats = remember(visibleReceipts) {
         WorkStatsCalculator.dayStats(visibleReceipts)
     }
-    val periodStats = remember(receipts, payrollSettings) {
-        WorkStatsCalculator.periodStats(receipts, payrollSettings)
+    val periodStats = remember(allReceipts, payrollSettings) {
+        WorkStatsCalculator.periodStats(allReceipts, payrollSettings)
+    }
+    val punchHabit = remember(allReceipts) {
+        PunchHabitLearner.learn(allReceipts)
+    }
+    LaunchedEffect(punchHabit, reminderSettings) {
+        ReminderScheduler.reschedule(context, reminderSettings, punchHabit)
     }
     val groupedReceipts = remember(visibleReceipts, selectedGroupMode) {
         groupReceipts(visibleReceipts, selectedGroupMode)
@@ -368,6 +390,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     // "Dia", "Semana" e "Lista"). Agrupadas para o JourneyCard não receber um a um.
     fun showMessage(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            showMessage("Permissão de notificação negada. Ative nas configurações para receber lembretes.")
+        }
     }
 
     val rowActions = ReceiptRowActions(
@@ -537,7 +567,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (receipts.isNotEmpty()) {
+            if (allReceipts.isNotEmpty()) {
                 Row(
                     Modifier.navigationBarsPadding().padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -581,7 +611,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             }
             item {
                 SummaryCard(
-                    total = receipts.size,
+                    total = allReceipts.size,
                     stats = periodStats,
                     isProcessing = isProcessing,
                     isDarkTheme = isDarkTheme,
@@ -617,7 +647,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             }
             if (visibleReceipts.isEmpty()) {
                 item { EmptyState(onAdd = { pendingPunch = null; showAddSheet = true }, isSearch = query.isNotBlank()) }
-            } else if (selectedGroupMode == "month") {
+            } else if (selectedGroupMode == GROUP_MODE_MONTH) {
                 monthSections.forEach { month ->
                     val monthExpanded = query.isNotBlank() || expandedMonths.contains(month.key)
                     item(key = "month-${month.key}") {
@@ -635,16 +665,16 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                     }
                     if (monthExpanded) {
                         month.days.forEach { day ->
-                            val dayExpanded = query.isNotBlank() || expandedDays.contains(day.key)
+                            val dayExpanded = query.isNotBlank() || !collapsedDays.contains(day.key)
                             item(key = "day-${day.key}") {
                                 DayHeader(
                                     day = day,
                                     expanded = dayExpanded,
                                     onToggle = {
-                                        expandedDays = if (expandedDays.contains(day.key)) {
-                                            expandedDays - day.key
+                                        collapsedDays = if (collapsedDays.contains(day.key)) {
+                                            collapsedDays - day.key
                                         } else {
-                                            expandedDays + day.key
+                                            collapsedDays + day.key
                                         }
                                     }
                                 )
@@ -769,12 +799,49 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         InsightsSheet(
             stats = periodStats,
             onSelectDay = { date ->
-                query = date
-                selectedFilter = "all"
+                val focus = focusDayInMonthView(date, allReceipts)
+                query = ""
+                selectedFilter = FILTER_ALL
+                selectedGroupMode = GROUP_MODE_MONTH
+                expandedMonths = focus.expandedMonths
+                collapsedDays = focus.collapsedDays
                 showInsights = false
             },
             expectedDailyMinutes = payrollSettings.expectedDailyMinutes,
+            onOpenReminder = {
+                showInsights = false
+                showReminderSheet = true
+            },
             onDismiss = { showInsights = false }
+        )
+    }
+    if (showReminderSheet) {
+        ReminderSheet(
+            settings = reminderSettings,
+            habit = punchHabit,
+            onDismiss = { showReminderSheet = false },
+            onSave = { newSettings ->
+                ReminderSettingsStore.save(context, newSettings)
+                reminderSettings = newSettings
+                showReminderSheet = false
+                if (newSettings.enabled) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        !ReminderNotifier.hasPermission(context)
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    val hasHabit = punchHabit.entryTime != null && punchHabit.workdays.isNotEmpty()
+                    showMessage(
+                        if (hasHabit) {
+                            "Lembrete de ponto atualizado."
+                        } else {
+                            "Lembrete ativado. Ele começará a funcionar assim que houver histórico suficiente."
+                        }
+                    )
+                } else {
+                    showMessage("Lembrete de ponto desativado.")
+                }
+            }
         )
     }
     backupPasswordDialog?.let { action ->
