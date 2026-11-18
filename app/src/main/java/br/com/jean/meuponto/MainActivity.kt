@@ -1,10 +1,12 @@
 package br.com.jean.meuponto
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -123,6 +125,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import br.com.jean.meuponto.BuildConfig
 import br.com.jean.meuponto.data.AppDatabase
 import br.com.jean.meuponto.data.Receipt
+import br.com.jean.meuponto.data.ReminderNotifier
+import br.com.jean.meuponto.data.ReminderScheduler
+import br.com.jean.meuponto.data.ReminderSettingsStore
 import br.com.jean.meuponto.data.cleanupUpdateAndPdfCaches
 import br.com.jean.meuponto.data.copyToPrivateStorage
 import br.com.jean.meuponto.data.createBackup
@@ -134,6 +139,7 @@ import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.PayrollSettingsStore
 import br.com.jean.meuponto.domain.PeriodStats
 import br.com.jean.meuponto.domain.PunchChoice
+import br.com.jean.meuponto.domain.PunchHabitLearner
 import br.com.jean.meuponto.domain.WorkStatsCalculator
 import br.com.jean.meuponto.domain.dayIssueLabel
 import br.com.jean.meuponto.domain.DayPunchStatus
@@ -166,6 +172,7 @@ import br.com.jean.meuponto.ui.MonthSection
 import br.com.jean.meuponto.ui.PayrollSettingsSheet
 import br.com.jean.meuponto.ui.PtBrLocale
 import br.com.jean.meuponto.ui.ReceiptViewer
+import br.com.jean.meuponto.ui.ReminderSheet
 import br.com.jean.meuponto.ui.SwipeToDeleteBox
 import br.com.jean.meuponto.ui.TealDark
 import br.com.jean.meuponto.ui.UpdateBanner
@@ -283,6 +290,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var showOrganizeSheet by rememberSaveable { mutableStateOf(false) }
     var showPayrollSettings by rememberSaveable { mutableStateOf(false) }
     var showInsights by rememberSaveable { mutableStateOf(false) }
+    var showReminderSheet by rememberSaveable { mutableStateOf(false) }
     var backupPasswordDialog by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Registros em edição/exibição/exclusão: guardam o objeto inteiro para a folha não precisar
@@ -291,6 +299,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var receiptBeingViewed by remember { mutableStateOf<Receipt?>(null) }
     var receiptPendingDelete by remember { mutableStateOf<Receipt?>(null) }
     var payrollSettings by remember { mutableStateOf(PayrollSettingsStore.load(context)) }
+    var reminderSettings by remember { mutableStateOf(ReminderSettingsStore.load(context)) }
     var expandedMonths by remember { mutableStateOf(setOf(currentMonthKey())) }
     var collapsedDays by remember { mutableStateOf(emptySet<String>()) }
     var isProcessing by remember { mutableStateOf(false) }
@@ -362,6 +371,12 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val periodStats = remember(allReceipts, payrollSettings) {
         WorkStatsCalculator.periodStats(allReceipts, payrollSettings)
     }
+    val punchHabit = remember(allReceipts) {
+        PunchHabitLearner.learn(allReceipts)
+    }
+    LaunchedEffect(punchHabit, reminderSettings) {
+        ReminderScheduler.reschedule(context, reminderSettings, punchHabit)
+    }
     val groupedReceipts = remember(visibleReceipts, selectedGroupMode) {
         groupReceipts(visibleReceipts, selectedGroupMode)
     }
@@ -375,6 +390,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     // "Dia", "Semana" e "Lista"). Agrupadas para o JourneyCard não receber um a um.
     fun showMessage(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            showMessage("Permissão de notificação negada. Ative nas configurações para receber lembretes.")
+        }
     }
 
     val rowActions = ReceiptRowActions(
@@ -785,7 +808,40 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 showInsights = false
             },
             expectedDailyMinutes = payrollSettings.expectedDailyMinutes,
+            onOpenReminder = {
+                showInsights = false
+                showReminderSheet = true
+            },
             onDismiss = { showInsights = false }
+        )
+    }
+    if (showReminderSheet) {
+        ReminderSheet(
+            settings = reminderSettings,
+            habit = punchHabit,
+            onDismiss = { showReminderSheet = false },
+            onSave = { newSettings ->
+                ReminderSettingsStore.save(context, newSettings)
+                reminderSettings = newSettings
+                showReminderSheet = false
+                if (newSettings.enabled) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        !ReminderNotifier.hasPermission(context)
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    val hasHabit = punchHabit.entryTime != null && punchHabit.workdays.isNotEmpty()
+                    showMessage(
+                        if (hasHabit) {
+                            "Lembrete de ponto atualizado."
+                        } else {
+                            "Lembrete ativado. Ele começará a funcionar assim que houver histórico suficiente."
+                        }
+                    )
+                } else {
+                    showMessage("Lembrete de ponto desativado.")
+                }
+            }
         )
     }
     backupPasswordDialog?.let { action ->

@@ -38,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.Text
@@ -53,12 +54,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import br.com.jean.meuponto.R
 import br.com.jean.meuponto.domain.PeriodStats
 import br.com.jean.meuponto.domain.WorkDayStats
 import br.com.jean.meuponto.domain.dayIssueSummary
@@ -201,6 +204,7 @@ fun InsightsSheet(
     stats: PeriodStats,
     onSelectDay: (String) -> Unit = {},
     expectedDailyMinutes: Int? = null,
+    onOpenReminder: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val reduceMotion = remember { !ValueAnimator.areAnimatorsEnabled() }
@@ -310,6 +314,22 @@ fun InsightsSheet(
                     value = formatSignedMinutes(balance),
                     detail = if (balance >= 0) "Você está acima da jornada esperada." else "Horas a compensar no período."
                 )
+            }
+
+            if (onOpenReminder != null) {
+                OutlinedButton(
+                    onClick = onOpenReminder,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(
+                        Icons.Outlined.Schedule,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.insights_reminder_action))
+                }
             }
 
             Surface(
