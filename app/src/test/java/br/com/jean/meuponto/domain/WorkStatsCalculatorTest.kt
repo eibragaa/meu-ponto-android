@@ -528,4 +528,68 @@ class WorkStatsCalculatorTest {
         assertEquals(listOf(DayIssue.MISSING_EXIT), days.getValue("21/10/2026").issues)
         assertEquals(listOf(DayIssue.MISSING_ENTRY), days.getValue("22/10/2026").issues)
     }
+
+    @Test
+    fun `ocr com data e horario reconhecidos mantem data original e classifica batida`() {
+        val resolved = WorkStatsCalculator.resolveOcrReceipt(
+            recognizedText = "COMPROVANTE 21/10/2026 08:05",
+            preferredPunch = PunchChoice.ENTRY,
+            today = LocalDate.of(2026, 10, 22)
+        )
+
+        assertEquals("21/10/2026", resolved.workDate)
+        assertEquals("08:05", resolved.workTime)
+        assertEquals("08:05", resolved.entryTime)
+        assertNull(resolved.exitTime)
+        assertFalse(resolved.needsReview)
+        assertFalse(resolved.usedTodayFallback)
+    }
+
+    @Test
+    fun `ocr com horario mas sem data usa data de hoje automaticamente`() {
+        val resolved = WorkStatsCalculator.resolveOcrReceipt(
+            recognizedText = "HORA 17:12 REGISTRO",
+            preferredPunch = PunchChoice.EXIT,
+            today = LocalDate.of(2026, 10, 22)
+        )
+
+        assertEquals("22/10/2026", resolved.workDate)
+        assertEquals("17:12", resolved.workTime)
+        assertNull(resolved.entryTime)
+        assertEquals("17:12", resolved.exitTime)
+        assertFalse(resolved.needsReview)
+        assertTrue(resolved.usedTodayFallback)
+    }
+
+    @Test
+    fun `ocr com um horario sem data e sem escolha previa usa data de hoje mas pede revisao de tipo`() {
+        val resolved = WorkStatsCalculator.resolveOcrReceipt(
+            recognizedText = "BATIDA 08:00",
+            preferredPunch = null,
+            today = LocalDate.of(2026, 10, 22)
+        )
+
+        assertEquals("22/10/2026", resolved.workDate)
+        assertEquals("08:00", resolved.workTime)
+        assertNull(resolved.entryTime)
+        assertNull(resolved.exitTime)
+        assertTrue(resolved.needsReview)
+        assertTrue(resolved.usedTodayFallback)
+    }
+
+    @Test
+    fun `ocr sem data e sem horario mantem data vazia e pede revisao`() {
+        val resolved = WorkStatsCalculator.resolveOcrReceipt(
+            recognizedText = "PAPEL ILEGIVEL",
+            preferredPunch = PunchChoice.ENTRY,
+            today = LocalDate.of(2026, 10, 22)
+        )
+
+        assertEquals("", resolved.workDate)
+        assertEquals("", resolved.workTime)
+        assertNull(resolved.entryTime)
+        assertNull(resolved.exitTime)
+        assertTrue(resolved.needsReview)
+        assertFalse(resolved.usedTodayFallback)
+    }
 }

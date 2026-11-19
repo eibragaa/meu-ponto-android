@@ -36,11 +36,10 @@ internal fun copyToPrivateStorage(context: Context, uri: Uri): File {
 /**
  * Roda o OCR local (ML Kit, sem rede) sobre a imagem e grava o comprovante.
  *
- * Heurística de extração, deliberadamente simples:
- * - data: primeira ocorrência de `dd/MM/yyyy` (ou `dd.MM.yyyy`/`dd-MM-yyyy`) válida;
- * - horários: todas as ocorrências de `HH:mm` válidas, em ordem de leitura. Dois ou mais viram
- *   entrada e saída, nessa ordem (ver `WorkStatsCalculator.ocrPunches`); um só fica sem tipo, porque
- *   o OCR não sabe se é entrada ou saída.
+ * A extração e consolidação moram em [WorkStatsCalculator.resolveOcrReceipt]:
+ * - data: primeira ocorrência de `dd/MM/yyyy` válida; se não houver data mas houver horário válido,
+ *   assume a data de hoje para não travar o fluxo de cadastro em 3 cliques;
+ * - horários: `HH:mm` em ordem de leitura (com tipo imediato quando [preferredPunch] foi escolhido).
  *
  * O que não for reconhecido, ou o que não tiver tipo, fica com `needsReview = true` para o usuário
  * corrigir na UI. A mensagem devolvida é o texto do snackbar — por isso descreve o que faltou, não
@@ -61,44 +60,36 @@ internal suspend fun recognizeAndSave(
             recognizer.close()
         }
     }
-    val date = WorkStatsCalculator.normalizeWorkDate(text)
-    val times = Regex("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b")
-        .findAll(text)
-        .mapNotNull { WorkStatsCalculator.normalizeClockTime(it.value) }
-        .toList()
-    val punches = WorkStatsCalculator.ocrPunches(times)
-    // Quando o usuário escolheu o tipo antes da captura, um horário só já sai tipado.
-    var entry = punches.entry
-    var exit = punches.exit
-    val needsReview = if (times.size == 1 && preferredPunch != null) {
-        when (preferredPunch) {
-            PunchChoice.ENTRY -> { entry = times[0]; date == null }
-            PunchChoice.EXIT -> { exit = times[0]; date == null }
-            else -> date == null || times.size < 2
-        }
-    } else {
-        date == null || times.size < 2
-    }
+    val resolved = WorkStatsCalculator.resolveOcrReceipt(text, preferredPunch)
 
     dao.insert(
         Receipt(
             capturedAt = System.currentTimeMillis(),
-            workDate = date ?: "",
-            workTime = punches.workTime,
+            workDate = resolved.workDate,
+            workTime = resolved.workTime,
             imagePath = file.absolutePath,
             recognizedText = text,
-            entryTime = entry,
-            exitTime = exit,
-            needsReview = needsReview
+            entryTime = resolved.entryTime,
+            exitTime = resolved.exitTime,
+            needsReview = resolved.needsReview
         )
     )
 
     return when {
-        date == null && times.isEmpty() -> "Comprovante salvo — revise data e horário."
-        date == null -> "Comprovante salvo — revise a data."
-        times.isEmpty() -> "Comprovante salvo — revise o horário."
-        times.size == 1 && preferredPunch == null -> "Comprovante salvo — diga se o horário é entrada ou saída."
-        else -> "Comprovante salvo — confira a data $date."
+        resolved.workDate.isBlank() && resolved.workTime.isBlank() ->
+            "Comprovante salvo — revise data e horário."
+        resolved.workTime.isBlank() ->
+            "Comprovante salvo — revise o horário."
+        resolved.workDate.isBlank() ->
+            "Comprovante salvo — revise a data."
+        resolved.needsReview && resolved.usedTodayFallback ->
+            "Comprovante salvo com a data de hoje — diga se o horário é entrada ou saída."
+        resolved.needsReview ->
+            "Comprovante salvo — diga se o horário é entrada ou saída."
+        resolved.usedTodayFallback ->
+            "Comprovante salvo com a data de hoje (${resolved.workDate})."
+        else ->
+            "Comprovante salvo — confira a data ${resolved.workDate}."
     }
 }
 

@@ -1,6 +1,7 @@
 package br.com.jean.meuponto.domain
 
 import br.com.jean.meuponto.data.Receipt
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -76,5 +77,22 @@ class OpenEntryTest {
         val now = LocalDateTime.of(2026, 10, 22, 13, 59)
 
         assertFalse(hasOpenEntry(receipts, now))
+    }
+
+    @Test
+    fun `sugere entrada quando nao ha turno aberto`() {
+        val closed = listOf(receipt(date = "22/10/2026", entry = "08:00", exit = "17:00"))
+        val now = LocalDateTime.of(2026, 10, 22, 18, 0)
+
+        assertEquals(PunchChoice.ENTRY, suggestedNextPunch(emptyList(), now))
+        assertEquals(PunchChoice.ENTRY, suggestedNextPunch(closed, now))
+    }
+
+    @Test
+    fun `sugere saida quando ha entrada aberta dentro da janela`() {
+        val open = listOf(receipt(date = "22/10/2026", entry = "08:00"))
+        val now = LocalDateTime.of(2026, 10, 22, 12, 30)
+
+        assertEquals(PunchChoice.EXIT, suggestedNextPunch(open, now))
     }
 }

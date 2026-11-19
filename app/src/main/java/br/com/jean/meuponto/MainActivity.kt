@@ -47,7 +47,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -153,6 +152,7 @@ import br.com.jean.meuponto.domain.occurrenceLabel
 import br.com.jean.meuponto.domain.punchChoiceOf
 import br.com.jean.meuponto.domain.receiptReviewHint
 import br.com.jean.meuponto.domain.receiptTimeLabel
+import br.com.jean.meuponto.domain.suggestedNextPunch
 import br.com.jean.meuponto.ui.Coral
 import br.com.jean.meuponto.ui.DaySection
 import br.com.jean.meuponto.ui.DeleteReceiptDialog
@@ -198,6 +198,8 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Date
@@ -223,6 +225,9 @@ import kotlinx.coroutines.withContext
  */
 /** Tempo que o resultado da verificação manual fica visível no rodapé. */
 private const val UPDATE_CHECK_MESSAGE_MS = 6000L
+
+private val editorDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/uuuu")
+private val editorTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -475,7 +480,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
 
     val importReceipt = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) processUri(uri, pendingPunch)
+        if (uri != null) processUri(uri, pendingPunch) else pendingPunch = null
     }
 
     // A senha é guardada em `pendingBackupPassword` *antes* de abrir o seletor de arquivos: o
@@ -533,10 +538,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             if (imageUri != null) {
                 processUri(imageUri, pendingPunch)
             } else {
+                pendingPunch = null
                 showMessage("Não foi possível preparar o comprovante digitalizado.")
             }
-        } else if (result.resultCode != Activity.RESULT_CANCELED) {
-            showMessage("Não foi possível concluir a digitalização.")
+        } else {
+            pendingPunch = null
+            if (result.resultCode != Activity.RESULT_CANCELED) {
+                showMessage("Não foi possível concluir a digitalização.")
+            }
         }
     }
 
@@ -544,12 +553,15 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
      * Abre o Document Scanner do ML Kit.
      *
      * Ele devolve um `IntentSender` que exige uma `Activity` (não serve `Context` genérico), por
-     * isso o cast; quando não há Activity ou Play Services, cai na mensagem para usar a galeria.
+     * isso o cast; quando não há Activity ou Play Services, abre a folha de opções como fallback
+     * para o usuário escolher pela galeria.
      */
-    fun startScanner() {
+    fun startScanner(punch: PunchChoice? = pendingPunch) {
+        pendingPunch = punch
         val activity = context as? Activity
         if (activity == null) {
-            showMessage("Não foi possível iniciar o scanner neste dispositivo.")
+            showAddSheet = true
+            showMessage("Scanner indisponível. Escolha a imagem pela galeria.")
             return
         }
         documentScanner.getStartScanIntent(activity)
@@ -557,8 +569,13 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
             }
             .addOnFailureListener {
-                showMessage("Scanner indisponível. Você ainda pode importar pela galeria.")
+                showAddSheet = true
+                showMessage("Scanner indisponível. Escolha a imagem pela galeria.")
             }
+    }
+
+    val suggestedPunch = remember(allReceipts) {
+        suggestedNextPunch(allReceipts, LocalDateTime.now())
     }
 
     Scaffold(
@@ -568,27 +585,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (allReceipts.isNotEmpty()) {
-                Row(
-                    Modifier.navigationBarsPadding().padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ExtendedFloatingActionButton(
-                        onClick = { pendingPunch = PunchChoice.ENTRY; showAddSheet = true },
-                        icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                        text = { Text("Entrada") },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        shape = RoundedCornerShape(18.dp)
-                    )
-                    ExtendedFloatingActionButton(
-                        onClick = { pendingPunch = PunchChoice.EXIT; showAddSheet = true },
-                        icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                        text = { Text("Saída") },
-                        containerColor = MaterialTheme.colorScheme.secondary,
-                        contentColor = MaterialTheme.colorScheme.onSecondary,
-                        shape = RoundedCornerShape(18.dp)
-                    )
-                }
+                QuickPunchFabBar(
+                    suggestedPunch = suggestedPunch,
+                    onCameraPunch = ::startScanner,
+                    onOpenOptions = {
+                        pendingPunch = suggestedPunch
+                        showAddSheet = true
+                    }
+                )
             }
         }
     ) { padding ->
@@ -646,7 +650,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 )
             }
             if (visibleReceipts.isEmpty()) {
-                item { EmptyState(onAdd = { pendingPunch = null; showAddSheet = true }, isSearch = query.isNotBlank()) }
+                item {
+                    EmptyState(
+                        onRegisterEntry = { startScanner(PunchChoice.ENTRY) },
+                        onRegisterExit = { startScanner(PunchChoice.EXIT) },
+                        onOpenGallery = { pendingPunch = null; showAddSheet = true },
+                        isSearch = query.isNotBlank()
+                    )
+                }
             } else if (selectedGroupMode == GROUP_MODE_MONTH) {
                 monthSections.forEach { month ->
                     val monthExpanded = query.isNotBlank() || expandedMonths.contains(month.key)
@@ -749,9 +760,8 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
             punch = pendingPunch,
             onDismiss = { showAddSheet = false; pendingPunch = null },
             onCamera = { punch ->
-                pendingPunch = punch
                 showAddSheet = false
-                startScanner()
+                startScanner(punch)
             },
             onGallery = { punch ->
                 pendingPunch = punch
@@ -1626,18 +1636,113 @@ private fun ReceiptThumbnail(path: String) {
     }
 }
 
+/**
+ * Barra flutuante de registro rápido em 3 cliques:
+ * [Entrada] / [Saída] abrem o scanner direto (destacando a batida esperada pelo turno em aberto)
+ * e o botão compacto ao lado abre opções de galeria.
+ */
 @Composable
-private fun EmptyState(onAdd: () -> Unit, isSearch: Boolean) {
+private fun QuickPunchFabBar(
+    suggestedPunch: PunchChoice,
+    onCameraPunch: (PunchChoice) -> Unit,
+    onOpenOptions: () -> Unit
+) {
+    Row(
+        Modifier.navigationBarsPadding().padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        QuickPunchFab(
+            label = "Entrada",
+            isSuggested = suggestedPunch == PunchChoice.ENTRY,
+            onClick = { onCameraPunch(PunchChoice.ENTRY) }
+        )
+        QuickPunchFab(
+            label = "Saída",
+            isSuggested = suggestedPunch == PunchChoice.EXIT,
+            onClick = { onCameraPunch(PunchChoice.EXIT) }
+        )
+        Surface(
+            onClick = onOpenOptions,
+            modifier = Modifier.size(56.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            shadowElevation = 6.dp
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.FolderOpen, contentDescription = "Escolher da galeria")
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickPunchFab(
+    label: String,
+    isSuggested: Boolean,
+    onClick: () -> Unit
+) {
+    ExtendedFloatingActionButton(
+        onClick = onClick,
+        icon = { Icon(Icons.Outlined.CameraAlt, contentDescription = null) },
+        text = { Text(label, maxLines = 1, softWrap = false) },
+        containerColor = if (isSuggested) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        contentColor = if (isSuggested) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        shape = RoundedCornerShape(18.dp)
+    )
+}
+
+@Composable
+private fun EmptyState(
+    onRegisterEntry: () -> Unit,
+    onRegisterExit: () -> Unit,
+    onOpenGallery: () -> Unit,
+    isSearch: Boolean
+) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             MeuPontoMark(Modifier.size(58.dp))
             Text(if (isSearch) "Nada encontrado" else "Seu arquivo está vazio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Text(if (isSearch) "Tente outra data, horário ou palavra-chave." else "Guarde seu primeiro comprovante e encontre tudo quando precisar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(if (isSearch) "Tente outra data, horário ou palavra-chave." else "Guarde seu primeiro comprovante em até 3 toques.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             if (!isSearch) {
-                Button(onClick = onAdd, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), shape = RoundedCornerShape(14.dp)) {
-                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Adicionar comprovante")
+                Column(
+                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Button(
+                        onClick = onRegisterEntry,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Outlined.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Registrar entrada")
+                    }
+                    OutlinedButton(
+                        onClick = onRegisterExit,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Outlined.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Registrar saída")
+                    }
+                    TextButton(onClick = onOpenGallery) {
+                        Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Escolher da galeria")
+                    }
                 }
             }
         }
@@ -1931,6 +2036,14 @@ private fun EditReceiptSheet(
                 singleLine = true,
                 label = { Text("Data") },
                 placeholder = { Text("dd/mm/aaaa") },
+                trailingIcon = {
+                    TextButton(onClick = {
+                        val todayText = LocalDate.now().format(editorDateFormatter)
+                        workDateField = TextFieldValue(todayText, TextRange(todayText.length))
+                    }) {
+                        Text("Hoje")
+                    }
+                },
                 supportingText = {
                     Text(
                         when {
@@ -2113,6 +2226,14 @@ private fun PunchTimeField(
         singleLine = true,
         label = { Text(label) },
         placeholder = { Text("hh:mm") },
+        trailingIcon = {
+            TextButton(onClick = {
+                val nowText = LocalTime.now().format(editorTimeFormatter)
+                onValueChange(TextFieldValue(nowText, TextRange(nowText.length)))
+            }) {
+                Text("Agora")
+            }
+        },
         supportingText = { Text(if (field.text.isBlank()) "Ex.: 10:20" else "Horário em hh:mm") },
         isError = field.text.isNotBlank() && !isValid,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
