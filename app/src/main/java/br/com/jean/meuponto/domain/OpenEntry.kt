@@ -28,3 +28,10 @@ fun hasOpenEntry(receipts: List<Receipt>, now: LocalDateTime): Boolean {
         }
     }
 }
+
+/**
+ * Sugere a próxima batida esperada ([PunchChoice.EXIT] quando há entrada aberta na janela de turno;
+ * [PunchChoice.ENTRY] caso contrário) para destacar a ação principal na UI.
+ */
+fun suggestedNextPunch(receipts: List<Receipt>, now: LocalDateTime): PunchChoice =
+    if (hasOpenEntry(receipts, now)) PunchChoice.EXIT else PunchChoice.ENTRY

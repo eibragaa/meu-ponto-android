@@ -71,6 +71,21 @@ data class PeriodStats(
 )
 
 /**
+ * Resultado consolidado de um comprovante lido pelo OCR.
+ *
+ * [usedTodayFallback] indica quando a data não foi encontrada na imagem e foi assumida como
+ * o dia corrente para evitar bloqueio na revisão.
+ */
+data class ResolvedOcrReceipt(
+    val workDate: String,
+    val workTime: String,
+    val entryTime: String?,
+    val exitTime: String?,
+    val needsReview: Boolean,
+    val usedTodayFallback: Boolean
+)
+
+/**
  * Chave usada no lugar da data quando o OCR não identificou a data do comprovante.
  * Mantida como texto porque é a chave de agrupamento usada na UI e no banco.
  */
@@ -200,6 +215,47 @@ object WorkStatsCalculator {
         0 -> OcrPunches(workTime = "", entry = null, exit = null)
         1 -> OcrPunches(workTime = times[0], entry = null, exit = null)
         else -> OcrPunches(workTime = times[0], entry = times[0], exit = times[1])
+    }
+
+    /**
+     * Resolve data, horários e necessidade de revisão a partir do texto lido pelo OCR.
+     *
+     * Quando o OCR encontra pelo menos um horário válido mas não reconhece a data no comprovante,
+     * preenche automaticamente com a data de [today] (`dd/MM/yyyy`) para não bloquear o registro
+     * em 3 cliques. Se nem data nem horário forem lidos, a data permanece vazia para revisão.
+     */
+    fun resolveOcrReceipt(
+        recognizedText: String,
+        preferredPunch: PunchChoice? = null,
+        today: LocalDate = LocalDate.now()
+    ): ResolvedOcrReceipt {
+        val recognizedDate = normalizeWorkDate(recognizedText)
+        val times = timePattern.findAll(recognizedText)
+            .mapNotNull { normalizeClockTime(it.value) }
+            .toList()
+        val punches = ocrPunches(times)
+        var entry = punches.entry
+        var exit = punches.exit
+        if (times.size == 1 && preferredPunch != null) {
+            when (preferredPunch) {
+                PunchChoice.ENTRY -> entry = times[0]
+                PunchChoice.EXIT -> exit = times[0]
+                else -> Unit
+            }
+        }
+        val usedTodayFallback = recognizedDate == null && times.isNotEmpty()
+        val effectiveDate = recognizedDate ?: if (usedTodayFallback) today.format(dateFormatter) else ""
+        val hasTypedPunch = times.size >= 2 ||
+            (times.size == 1 && (preferredPunch == PunchChoice.ENTRY || preferredPunch == PunchChoice.EXIT))
+        val needsReview = effectiveDate.isBlank() || !hasTypedPunch
+        return ResolvedOcrReceipt(
+            workDate = effectiveDate,
+            workTime = punches.workTime,
+            entryTime = entry,
+            exitTime = exit,
+            needsReview = needsReview,
+            usedTodayFallback = usedTodayFallback
+        )
     }
 
     fun periodStats(
