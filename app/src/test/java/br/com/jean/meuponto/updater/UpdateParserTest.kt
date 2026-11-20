@@ -2,6 +2,7 @@ package br.com.jean.meuponto.updater
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,7 +48,8 @@ class UpdateParserTest {
         body: String = "Correções e melhorias",
         assets: List<ApkAsset> = listOf(apk()),
         isPrerelease: Boolean = false,
-        isBetaTag: Boolean = false
+        isBetaTag: Boolean = false,
+        isDraft: Boolean = false
     ) = ReleasePayload(
         tag = tag,
         name = name,
@@ -55,7 +57,8 @@ class UpdateParserTest {
         releaseUrl = releaseUrl,
         assets = assets,
         isPrerelease = isPrerelease,
-        isBetaTag = isBetaTag
+        isBetaTag = isBetaTag,
+        isDraft = isDraft
     )
 
     @Test
@@ -328,5 +331,175 @@ class UpdateParserTest {
         assertEquals("", summarizeReleaseNotes("\n \n"))
         assertEquals("", summarizeReleaseNotes("# Meu Ponto v0.5.1\n\nv0.5.1"))
         assertEquals("", summarizeReleaseNotes("texto", maxChars = 0))
+    }
+
+    @Test
+    fun `rascunho nao vira atualizacao oficial`() {
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateRelease(release(tag = "v0.9.0", isDraft = true), currentVersion = "0.8.2")
+        )
+    }
+
+    @Test
+    fun `extrai versionCode valido apenas de tags beta-v numericas`() {
+        assertEquals(190008L, parseBetaVersionCode("beta-v190008"))
+        assertEquals(190009L, parseBetaVersionCode("BETA-V190009"))
+        assertEquals(190010L, parseBetaVersionCode("  beta-v190010  "))
+
+        assertNull(parseBetaVersionCode("v0.9.0"))
+        assertNull(parseBetaVersionCode("beta-190008"))
+        assertNull(parseBetaVersionCode("beta-v"))
+        assertNull(parseBetaVersionCode("beta-v0"))
+        assertNull(parseBetaVersionCode("beta-v-1"))
+        assertNull(parseBetaVersionCode("beta-v190008-rc1"))
+        assertNull(parseBetaVersionCode("beta-vabc"))
+        assertNull(parseBetaVersionCode(""))
+    }
+
+    @Test
+    fun `resolve rotulo do coordenador separando canal oficial e beta`() {
+        assertEquals(
+            "0.8.2",
+            resolveCoordinatorVersion("0.8.2", UpdateChannel.OFFICIAL, 20L)
+        )
+        assertEquals(
+            "190008-beta",
+            resolveCoordinatorVersion("0.8.1-beta", UpdateChannel.BETA, 190008L)
+        )
+        assertEquals(
+            "0.8.1-beta",
+            resolveCoordinatorVersion("0.8.1-beta", UpdateChannel.BETA, 0L)
+        )
+    }
+
+    @Test
+    fun `canal beta encontra beta-v190009 e prefere apk updater com digest`() {
+        val digest = "sha256:" + "b".repeat(64)
+        val beta190009 = release(
+            tag = "beta-v190009",
+            name = "Meu Ponto Beta • 0.8.1",
+            body = "Novo beta com melhorias",
+            assets = listOf(
+                apk(name = "Meu-Ponto-Beta-0.8.1.apk"),
+                apk(name = "Meu-Ponto-Beta-0.8.1-updater.apk", digest = digest)
+            ),
+            isPrerelease = true,
+            isBetaTag = true
+        )
+        val beta190008 = release(
+            tag = "beta-v190008",
+            assets = listOf(apk(name = "Meu-Ponto-Beta-0.8.1-updater.apk")),
+            isPrerelease = true,
+            isBetaTag = true
+        )
+
+        val result = evaluateBetaReleases(
+            releases = listOf(beta190008, beta190009),
+            currentVersionCode = 190008L
+        )
+
+        assertTrue(result is UpdateCheckResult.Available)
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals("190009-beta", info.versionName)
+        assertEquals("Meu Ponto Beta • 0.8.1", info.releaseName)
+        assertEquals("Novo beta com melhorias", info.releaseNotes)
+        assertEquals("Meu-Ponto-Beta-0.8.1-updater.apk", info.apkFileName)
+        assertEquals(digest, info.apkDigest)
+    }
+
+    @Test
+    fun `canal beta escolhe maior versionCode ignorando oficiais rascunhos e tags invalidas`() {
+        val releases = listOf(
+            release(tag = "v0.9.0", isPrerelease = false),
+            release(tag = "beta-v190099", isPrerelease = true, isDraft = true),
+            release(tag = "beta-v190098", isPrerelease = false, isBetaTag = true),
+            release(tag = "beta-vabc", isPrerelease = true, isBetaTag = true),
+            release(tag = "beta-190097", isPrerelease = true, isBetaTag = true),
+            release(
+                tag = "beta-v190009",
+                assets = listOf(apk(name = "Meu-Ponto-Beta-0.8.1-updater.apk")),
+                isPrerelease = true,
+                isBetaTag = true
+            ),
+            release(
+                tag = "beta-v190011",
+                assets = listOf(apk(name = "Meu-Ponto-Beta-0.8.1-updater.apk")),
+                isPrerelease = true,
+                isBetaTag = true
+            ),
+            release(
+                tag = "beta-v190010",
+                assets = listOf(apk(name = "Meu-Ponto-Beta-0.8.1-updater.apk")),
+                isPrerelease = true,
+                isBetaTag = true
+            )
+        )
+
+        val result = evaluateBetaReleases(releases, currentVersionCode = 190008L)
+
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals("190011-beta", info.versionName)
+    }
+
+    @Test
+    fun `canal beta devolve up to date quando ja esta na versao mais recente ou sem candidatos`() {
+        val beta190008 = release(
+            tag = "beta-v190008",
+            assets = listOf(apk(name = "Meu-Ponto-Beta-0.8.1-updater.apk")),
+            isPrerelease = true,
+            isBetaTag = true
+        )
+        val official = release(tag = "v9.9.9", isPrerelease = false)
+        val draft = release(tag = "beta-v190020", isPrerelease = true, isDraft = true)
+
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateBetaReleases(listOf(beta190008), currentVersionCode = 190008L)
+        )
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateBetaReleases(listOf(beta190008), currentVersionCode = 190009L)
+        )
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateBetaReleases(listOf(official, draft), currentVersionCode = 190008L)
+        )
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateBetaReleases(emptyList(), currentVersionCode = 190008L)
+        )
+        assertEquals(
+            UpdateCheckResult.UpToDate,
+            evaluateBetaReleases(listOf(beta190008), currentVersionCode = 0L)
+        )
+    }
+
+    @Test
+    fun `canal beta usa fallback de apk beta quando nao ha sufixo updater e falha sem apk`() {
+        val withoutUpdaterSuffix = release(
+            tag = "beta-v190009",
+            name = "",
+            body = "y".repeat(MAX_RELEASE_NOTES_CHARS + 20),
+            assets = listOf(apk(name = "Meu-Ponto-Beta-0.8.1.apk")),
+            isPrerelease = true,
+            isBetaTag = true
+        )
+        val result = evaluateBetaReleases(listOf(withoutUpdaterSuffix), currentVersionCode = 190008L)
+        val info = (result as UpdateCheckResult.Available).info
+        assertEquals("Meu-Ponto-Beta-0.8.1.apk", info.apkFileName)
+        assertEquals("Beta 190009", info.releaseName)
+        assertEquals(MAX_RELEASE_NOTES_CHARS, info.releaseNotes.length)
+
+        val withoutApk = release(
+            tag = "beta-v190010",
+            assets = listOf(ApkAsset("checksums.txt", "https://example.com/checksums.txt", 12L)),
+            isPrerelease = true,
+            isBetaTag = true
+        )
+        assertEquals(
+            UpdateCheckResult.Failed(UpdateFailure.NO_APK),
+            evaluateBetaReleases(listOf(withoutApk), currentVersionCode = 190008L)
+        )
     }
 }

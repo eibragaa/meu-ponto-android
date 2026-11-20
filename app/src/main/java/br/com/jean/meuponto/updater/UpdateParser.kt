@@ -1,11 +1,20 @@
 package br.com.jean.meuponto.updater
 
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.text.Normalizer
 
 /** Limite de caracteres das notas guardadas/exibidas; evita releases gigantes na UI. */
 internal const val MAX_RELEASE_NOTES_CHARS = 4_000
+
+/** Prefixo das tags beta publicadas pelo workflow `beta.yml` (ex.: `beta-v190008`). */
+internal const val BETA_TAG_PREFIX = "beta-v"
+
+private const val BETA_ANY_PREFIX = "beta-"
+private const val PRODUCT_APK_KEYWORD = "Meu-Ponto"
+private const val BETA_APK_KEYWORD = "Meu-Ponto-Beta"
+private const val UPDATER_APK_KEYWORD = "updater"
 
 private const val HTTP_UNAUTHORIZED = 401
 private const val HTTP_FORBIDDEN = 403
@@ -29,64 +38,120 @@ internal data class ReleasePayload(
     val body: String,
     val releaseUrl: String,
     val assets: List<ApkAsset>,
-    /** `true` quando o GitHub marcou a release como prerelease (beta). O updater ignora betas. */
+    /** `true` quando o GitHub marcou a release como prerelease (beta). O canal oficial ignora. */
     val isPrerelease: Boolean = false,
-    /** `true` quando a tag casa com o padrão `beta-v*` (beta). O updater ignora betas. */
+    /** `true` quando a tag casa com o padrão `beta-*`. O canal oficial ignora. */
     val isBetaTag: Boolean = false,
+    /** `true` quando a release ainda é rascunho; ignorada por todos os canais. */
+    val isDraft: Boolean = false,
 )
 
 /**
- * Lê o JSON de `/releases/latest`.
+ * Lê o JSON de `/releases/latest` para o canal oficial.
  *
- * É a única função do updater que conhece `org.json`; devolve `null` quando o corpo não é um
- * release válido (JSON malformado ou sem `tag_name`), para o chamador tratar como
- * [UpdateFailure.INVALID_RESPONSE].
+ * Devolve `null` quando o corpo não é uma release oficial válida (JSON malformado, sem `tag_name`,
+ * rascunho, pré-release ou tag `beta-*`), mantendo o canal oficial isolado de betas.
  */
 internal fun parseLatestRelease(json: String): ReleasePayload? {
     return try {
-        val root = JSONObject(json)
-        val tag = root.optString("tag_name", "").trim()
-        if (tag.isBlank()) return null
-        if (root.optBoolean("prerelease", false)) return null
-        if (tag.startsWith("beta-", ignoreCase = true)) return null
-
-        val assetsJson = root.optJSONArray("assets")
-        val assets = (0 until (assetsJson?.length() ?: 0)).mapNotNull { index ->
-            val asset = assetsJson?.optJSONObject(index) ?: return@mapNotNull null
-            val name = asset.optString("name", "").trim()
-            if (name.isBlank()) return@mapNotNull null
-            ApkAsset(
-                name = name,
-                downloadUrl = asset.optString("browser_download_url", "").trim(),
-                size = asset.optLong("size", 0L),
-                digest = asset.optString("digest", "")
-                    .trim()
-                    .takeUnless { it.equals("null", ignoreCase = true) }
-                    .orEmpty()
-            )
-        }
-
-        ReleasePayload(
-            tag = tag,
-            name = root.optString("name", "").trim(),
-            body = root.optString("body", "").trim().take(MAX_RELEASE_NOTES_CHARS),
-            releaseUrl = root.optString("html_url", "").trim(),
-            assets = assets
-        )
+        val payload = parseReleaseObject(JSONObject(json)) ?: return null
+        if (payload.isDraft || payload.isPrerelease || payload.isBetaTag) return null
+        payload
     } catch (_: JSONException) {
         null
     }
 }
 
 /**
- * Decide o resultado da consulta a partir de uma release já parseada.
+ * Lê o JSON de `/releases` (array) para avaliação pura no canal beta.
+ *
+ * É a única camada do updater que conhece `org.json`; devolve `null` quando o corpo não é um array
+ * JSON válido, para o chamador tratar como [UpdateFailure.INVALID_RESPONSE].
+ */
+internal fun parseReleasesList(json: String): List<ReleasePayload>? {
+    return try {
+        val array = JSONArray(json)
+        (0 until array.length()).mapNotNull { index ->
+            val obj = array.optJSONObject(index) ?: return@mapNotNull null
+            parseReleaseObject(obj)
+        }
+    } catch (_: JSONException) {
+        null
+    }
+}
+
+private fun parseReleaseObject(root: JSONObject): ReleasePayload? {
+    val tag = root.optString("tag_name", "").trim()
+    if (tag.isBlank()) return null
+
+    val assetsJson = root.optJSONArray("assets")
+    val assets = (0 until (assetsJson?.length() ?: 0)).mapNotNull { index ->
+        val asset = assetsJson?.optJSONObject(index) ?: return@mapNotNull null
+        val name = asset.optString("name", "").trim()
+        if (name.isBlank()) return@mapNotNull null
+        ApkAsset(
+            name = name,
+            downloadUrl = asset.optString("browser_download_url", "").trim(),
+            size = asset.optLong("size", 0L),
+            digest = asset.optString("digest", "")
+                .trim()
+                .takeUnless { it.equals("null", ignoreCase = true) }
+                .orEmpty()
+        )
+    }
+
+    return ReleasePayload(
+        tag = tag,
+        name = root.optString("name", "").trim(),
+        body = root.optString("body", "").trim().take(MAX_RELEASE_NOTES_CHARS),
+        releaseUrl = root.optString("html_url", "").trim(),
+        assets = assets,
+        isPrerelease = root.optBoolean("prerelease", false),
+        isBetaTag = tag.startsWith(BETA_ANY_PREFIX, ignoreCase = true),
+        isDraft = root.optBoolean("draft", false)
+    )
+}
+
+/**
+ * Extrai o `versionCode` numérico de uma tag beta (`beta-v190008` -> `190008`).
+ *
+ * Aceita apenas o prefixo `beta-v` seguido exclusivamente por dígitos positivos, evitando colisão
+ * com tags oficiais (`v0.8.2`) ou etiquetas malformadas.
+ */
+internal fun parseBetaVersionCode(tag: String): Long? {
+    val trimmed = tag.trim()
+    if (!trimmed.startsWith(BETA_TAG_PREFIX, ignoreCase = true)) return null
+    val rawCode = trimmed.substring(BETA_TAG_PREFIX.length)
+    if (rawCode.isEmpty() || !rawCode.all { it.isDigit() }) return null
+    return rawCode.toLongOrNull()?.takeIf { it > 0L }
+}
+
+/** Identificador estável de uma build beta para banner, dispensa e notas pendentes (ex.: `190009-beta`). */
+internal fun formatBetaVersionLabel(betaVersionCode: Long): String = "$betaVersionCode-beta"
+
+/**
+ * Resolve o rótulo de versão usado pelo coordenador para dispensa de banner, notas pendentes e
+ * mensagem manual "já está na versão mais recente".
+ */
+internal fun resolveCoordinatorVersion(
+    currentVersion: String,
+    channel: UpdateChannel,
+    currentVersionCode: Long
+): String = if (channel == UpdateChannel.BETA && currentVersionCode > 0L) {
+    formatBetaVersionLabel(currentVersionCode)
+} else {
+    currentVersion
+}
+
+/**
+ * Decide o resultado da consulta no canal oficial a partir de uma release já parseada.
  *
  * Função pura: não faz rede nem Android. Prefere o APK cujo nome contém `Meu-Ponto`; se não houver,
- * usa o primeiro `.apk` com URL de download.
+ * usa o primeiro `.apk` com URL de download. Ignora rascunhos, pré-releases e tags `beta-*`.
  */
 internal fun evaluateRelease(payload: ReleasePayload, currentVersion: String): UpdateCheckResult {
-    if (payload.isPrerelease || payload.isBetaTag) return UpdateCheckResult.UpToDate
-    if (payload.tag.startsWith("beta-", ignoreCase = true)) return UpdateCheckResult.UpToDate
+    if (payload.isDraft || payload.isPrerelease || payload.isBetaTag) return UpdateCheckResult.UpToDate
+    if (payload.tag.startsWith(BETA_ANY_PREFIX, ignoreCase = true)) return UpdateCheckResult.UpToDate
     val remoteVersion = payload.tag.trim().trimStart('v', 'V')
     if (remoteVersion.isBlank()) {
         return UpdateCheckResult.Failed(UpdateFailure.INVALID_RESPONSE)
@@ -96,13 +161,7 @@ internal fun evaluateRelease(payload: ReleasePayload, currentVersion: String): U
         return UpdateCheckResult.UpToDate
     }
 
-    val apk = payload.assets
-        .filter { asset ->
-            asset.name.endsWith(".apk", ignoreCase = true) && asset.downloadUrl.isNotBlank()
-        }
-        .let { apks ->
-            apks.firstOrNull { it.name.contains("Meu-Ponto", ignoreCase = true) } ?: apks.firstOrNull()
-        }
+    val apk = selectOfficialApk(payload.assets)
         ?: return UpdateCheckResult.Failed(UpdateFailure.NO_APK)
 
     return UpdateCheckResult.Available(
@@ -117,6 +176,74 @@ internal fun evaluateRelease(payload: ReleasePayload, currentVersion: String): U
             apkDigest = apk.digest
         )
     )
+}
+
+/**
+ * Decide o resultado da consulta no canal `githubBeta` a partir da lista de releases do GitHub.
+ *
+ * Função pura: aceita somente pré-releases publicadas (`!isDraft && isPrerelease`) com tag
+ * `beta-v<versionCode>`, escolhe o maior `versionCode` numérico e prefere o APK `-updater.apk`
+ * (`githubBeta`) para preservar o auto-updater após a atualização.
+ */
+internal fun evaluateBetaReleases(
+    releases: List<ReleasePayload>,
+    currentVersionCode: Long
+): UpdateCheckResult {
+    if (currentVersionCode <= 0L) return UpdateCheckResult.UpToDate
+
+    val bestCandidate = releases
+        .asSequence()
+        .filter { !it.isDraft && it.isPrerelease }
+        .mapNotNull { payload ->
+            val betaCode = parseBetaVersionCode(payload.tag) ?: return@mapNotNull null
+            betaCode to payload
+        }
+        .maxByOrNull { (betaCode, _) -> betaCode }
+        ?: return UpdateCheckResult.UpToDate
+
+    val (remoteCode, payload) = bestCandidate
+    if (remoteCode <= currentVersionCode) {
+        return UpdateCheckResult.UpToDate
+    }
+
+    val apk = selectBetaApk(payload.assets)
+        ?: return UpdateCheckResult.Failed(UpdateFailure.NO_APK)
+
+    val betaLabel = formatBetaVersionLabel(remoteCode)
+    return UpdateCheckResult.Available(
+        AppUpdateInfo(
+            versionName = betaLabel,
+            releaseName = payload.name.ifBlank { "Beta $remoteCode" },
+            releaseNotes = payload.body.take(MAX_RELEASE_NOTES_CHARS),
+            apkUrl = apk.downloadUrl,
+            apkFileName = apk.name,
+            apkSize = apk.size,
+            releaseUrl = payload.releaseUrl,
+            apkDigest = apk.digest
+        )
+    )
+}
+
+private fun selectOfficialApk(assets: List<ApkAsset>): ApkAsset? {
+    val apks = assets.filter { asset ->
+        asset.name.endsWith(".apk", ignoreCase = true) && asset.downloadUrl.isNotBlank()
+    }
+    return apks.firstOrNull { it.name.contains(PRODUCT_APK_KEYWORD, ignoreCase = true) }
+        ?: apks.firstOrNull()
+}
+
+private fun selectBetaApk(assets: List<ApkAsset>): ApkAsset? {
+    val apks = assets.filter { asset ->
+        asset.name.endsWith(".apk", ignoreCase = true) && asset.downloadUrl.isNotBlank()
+    }
+    return apks.firstOrNull {
+        it.name.contains(BETA_APK_KEYWORD, ignoreCase = true) &&
+            it.name.contains(UPDATER_APK_KEYWORD, ignoreCase = true)
+    }
+        ?: apks.firstOrNull { it.name.contains(UPDATER_APK_KEYWORD, ignoreCase = true) }
+        ?: apks.firstOrNull { it.name.contains(BETA_APK_KEYWORD, ignoreCase = true) }
+        ?: apks.firstOrNull { it.name.contains(PRODUCT_APK_KEYWORD, ignoreCase = true) }
+        ?: apks.firstOrNull()
 }
 
 /**

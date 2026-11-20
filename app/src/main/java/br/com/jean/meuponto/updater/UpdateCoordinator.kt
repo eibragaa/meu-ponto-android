@@ -206,12 +206,24 @@ internal object UpdateRuntime {
     @Volatile
     private var instance: UpdateCoordinator? = null
 
-    fun get(context: Context, currentVersion: String): UpdateCoordinator {
+    fun get(
+        context: Context,
+        currentVersion: String,
+        channel: UpdateChannel = UpdateChannel.OFFICIAL,
+        currentVersionCode: Long = 0L
+    ): UpdateCoordinator {
+        val effectiveVersion = resolveCoordinatorVersion(currentVersion, channel, currentVersionCode)
         return instance ?: synchronized(this) {
             instance ?: UpdateCoordinator(
                 preferences = UpdatePreferences(SharedPreferencesUpdateStore(context.applicationContext)),
-                currentVersion = currentVersion,
-                fetch = AppUpdater::checkForUpdates,
+                currentVersion = effectiveVersion,
+                fetch = { version ->
+                    AppUpdater.checkForUpdates(
+                        currentVersion = version,
+                        channel = channel,
+                        currentVersionCode = currentVersionCode
+                    )
+                },
                 clock = System::currentTimeMillis,
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
             ).also { instance = it }

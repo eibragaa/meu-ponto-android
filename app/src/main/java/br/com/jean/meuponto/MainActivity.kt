@@ -189,6 +189,7 @@ import br.com.jean.meuponto.ui.isValidWorkDate
 import br.com.jean.meuponto.ui.maskedFieldValue
 import br.com.jean.meuponto.updater.AboutSheet
 import br.com.jean.meuponto.updater.AppUpdater
+import br.com.jean.meuponto.updater.UpdateChannel
 import br.com.jean.meuponto.updater.UpdateDialog
 import br.com.jean.meuponto.updater.UpdateRuntime
 import br.com.jean.meuponto.updater.UpdateUiState
@@ -313,11 +314,22 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     var selectedReceiptIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var pendingBackupPassword by remember { mutableStateOf("") }
     val updaterEnabled = BuildConfig.UPDATER_ENABLED
+    val updateChannel = if (BuildConfig.IS_BETA_CHANNEL) UpdateChannel.BETA else UpdateChannel.OFFICIAL
     val currentVersion = remember { AppUpdater.getInstalledVersionName(context) }
+    val currentVersionCode = remember { AppUpdater.getInstalledVersionCode(context) }
     // Processo único (UpdateRuntime) para o estado do updater sobreviver à rotação; a tela apenas
     // observa e dispara eventos. Sem updater (flavor play), um fluxo vazio mantém o estado neutro.
     val updateCoordinator = remember {
-        if (updaterEnabled) UpdateRuntime.get(context, currentVersion) else null
+        if (updaterEnabled) {
+            UpdateRuntime.get(
+                context = context,
+                currentVersion = currentVersion,
+                channel = updateChannel,
+                currentVersionCode = currentVersionCode
+            )
+        } else {
+            null
+        }
     }
     val emptyUpdateState = remember { MutableStateFlow(UpdateUiState()) }
     val updateState by (updateCoordinator?.state ?: emptyUpdateState).collectAsState()

@@ -42,10 +42,12 @@ android {
         create("play") {
             dimension = "distribution"
             buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "IS_BETA_CHANNEL", "false")
         }
         create("github") {
             dimension = "distribution"
             buildConfigField("boolean", "UPDATER_ENABLED", "true")
+            buildConfigField("boolean", "IS_BETA_CHANNEL", "false")
         }
         create("playBeta") {
             dimension = "distribution"
@@ -56,6 +58,7 @@ android {
                 versionName = betaVersionNameOverride
             }
             buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "IS_BETA_CHANNEL", "true")
         }
         create("githubBeta") {
             dimension = "distribution"
@@ -66,6 +69,7 @@ android {
                 versionName = betaVersionNameOverride
             }
             buildConfigField("boolean", "UPDATER_ENABLED", "true")
+            buildConfigField("boolean", "IS_BETA_CHANNEL", "true")
         }
     }
     buildTypes {
