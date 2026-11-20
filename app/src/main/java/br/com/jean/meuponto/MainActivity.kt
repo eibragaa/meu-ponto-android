@@ -385,6 +385,9 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     val visibleDayStats = remember(visibleReceipts) {
         WorkStatsCalculator.dayStats(visibleReceipts)
     }
+    val allDayStats = remember(allReceipts) {
+        WorkStatsCalculator.dayStats(allReceipts)
+    }
     val periodStats = remember(allReceipts, payrollSettings) {
         WorkStatsCalculator.periodStats(allReceipts, payrollSettings)
     }
@@ -820,6 +823,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     if (showInsights) {
         InsightsSheet(
             stats = periodStats,
+            allDays = allDayStats,
             onSelectDay = { date ->
                 val focus = focusDayInMonthView(date, allReceipts)
                 query = ""

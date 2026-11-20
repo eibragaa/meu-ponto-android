@@ -4,6 +4,12 @@ import android.animation.ValueAnimator
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
@@ -38,7 +44,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.animation.core.tween
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +54,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -59,7 +65,9 @@ import androidx.compose.ui.unit.dp
 import br.com.jean.meuponto.R
 import br.com.jean.meuponto.domain.PeriodStats
 import br.com.jean.meuponto.domain.WorkDayStats
+import br.com.jean.meuponto.domain.WorkStatsCalculator
 import br.com.jean.meuponto.domain.dayIssueSummary
+import br.com.jean.meuponto.domain.dayOccurrenceSummary
 import br.com.jean.meuponto.domain.formatMinutes
 import br.com.jean.meuponto.domain.formatSignedMinutes
 import java.time.LocalDate
@@ -78,6 +86,18 @@ private const val DAYS_PER_WEEK = 7
 
 /** Porcentagem da referência a partir da qual um dia sai de [HeatLevel.LOW] e vai a [HeatLevel.MEDIUM]. */
 private const val HEAT_MEDIUM_PERCENT = 50
+
+/** Duração da animação de entrada da folha de Insights, em milissegundos. */
+private const val SHEET_ENTER_DURATION_MS = 200
+
+/** Duração de uma volta completa do relógio nos dias incompletos, em milissegundos. */
+internal const val CLOCK_ROTATION_DURATION_MS = 2_000
+
+/** Ângulo de uma volta completa do relógio animado, em graus. */
+internal const val FULL_ROTATION_DEGREES = 360f
+
+/** Transparência aplicada a dias fora do período sem comprovante registrado. */
+private const val MUTED_DAY_ALPHA = 0.35f
 
 /**
  * Nível de preenchimento de um dia na grade do mês ("Mapa do mês").
@@ -149,11 +169,58 @@ internal fun dayVisualState(day: WorkDayStats?, inPeriod: Boolean): DayVisualSta
 /** Progresso inicial/final da animação de entrada; movimento reduzido começa no estado final. */
 internal fun initialDayAnimationProgress(reduceMotion: Boolean): Float = if (reduceMotion) 1f else 0f
 
+/** Indica se o ícone de relógio de um dia incompleto deve girar continuamente. */
+internal fun shouldAnimateClock(state: DayVisualState, reduceMotion: Boolean): Boolean =
+    state == DayVisualState.INCOMPLETE && !reduceMotion
+
 /** Mês inicial do calendário compacto: hoje quando pertence ao período, senão o último mês. */
 internal fun initialCompactMonth(start: LocalDate, end: LocalDate, today: LocalDate): YearMonth {
     if (end.isBefore(start)) return YearMonth.from(end)
     return if (!today.isBefore(start) && !today.isAfter(end)) YearMonth.from(today)
     else YearMonth.from(end)
+}
+
+/**
+ * Meses navegáveis no calendário dos Insights: cobre todos os meses do período ativo e recua até o
+ * mês mais antigo com comprovante salvo (ou avança até o mais recente), em ordem cronológica.
+ */
+internal fun availableCalendarMonths(
+    periodStart: LocalDate,
+    periodEnd: LocalDate,
+    recordedDateKeys: Collection<String>
+): List<YearMonth> {
+    val periodMonths = monthsInPeriod(periodStart, periodEnd)
+    if (periodMonths.isEmpty()) return emptyList()
+
+    val recordedMonths = recordedDateKeys.mapNotNull { key ->
+        WorkStatsCalculator.parseWorkDate(key)?.let(YearMonth::from)
+    }
+    val firstMonth = recordedMonths.minOrNull()?.takeIf { it.isBefore(periodMonths.first()) }
+        ?: periodMonths.first()
+    val lastMonth = recordedMonths.maxOrNull()?.takeIf { it.isAfter(periodMonths.last()) }
+        ?: periodMonths.last()
+
+    return monthsInPeriod(firstMonth.atDay(1), lastMonth.atDay(1))
+}
+
+/** Informa se [month] pertence aos meses tocados pelo período de folha atual. */
+internal fun isMonthInPeriod(month: YearMonth, periodStart: LocalDate, periodEnd: LocalDate): Boolean {
+    if (periodEnd.isBefore(periodStart)) return false
+    return !month.isBefore(YearMonth.from(periodStart)) && !month.isAfter(YearMonth.from(periodEnd))
+}
+
+/** Avança ou recua um mês dentro de [availableMonths], respeitando início e fim da lista. */
+internal fun stepCalendarMonth(
+    current: YearMonth,
+    availableMonths: List<YearMonth>,
+    delta: Int
+): YearMonth {
+    if (availableMonths.isEmpty()) return current
+    val currentIndex = availableMonths.indexOf(current).takeIf { it >= 0 } ?: when {
+        current.isBefore(availableMonths.first()) -> 0
+        else -> availableMonths.lastIndex
+    }
+    return availableMonths[(currentIndex + delta).coerceIn(0, availableMonths.lastIndex)]
 }
 
 /** Avança ou recua um mês, mantendo a seleção dentro dos meses tocados pelo período. */
@@ -162,15 +229,7 @@ internal fun stepCompactMonth(
     start: LocalDate,
     end: LocalDate,
     delta: Int
-): YearMonth {
-    val months = monthsInPeriod(start, end)
-    if (months.isEmpty()) return current
-    val currentIndex = months.indexOf(current).takeIf { it >= 0 } ?: when {
-        current.isBefore(months.first()) -> 0
-        else -> months.lastIndex
-    }
-    return months[(currentIndex + delta).coerceIn(0, months.lastIndex)]
-}
+): YearMonth = stepCalendarMonth(current, monthsInPeriod(start, end), delta)
 
 /** Semanas de um mês com domingo na primeira coluna; células vazias são `null`. */
 internal fun monthWeeks(month: YearMonth): List<List<LocalDate?>> {
@@ -196,6 +255,7 @@ internal fun monthWeeks(month: YearMonth): List<List<LocalDate?>> {
 @Composable
 fun InsightsSheet(
     stats: PeriodStats,
+    allDays: Map<String, WorkDayStats> = stats.days,
     onSelectDay: (String) -> Unit = {},
     expectedDailyMinutes: Int? = null,
     onOpenReminder: (() -> Unit)? = null,
@@ -205,9 +265,9 @@ fun InsightsSheet(
     val sheetEnter = if (reduceMotion) {
         EnterTransition.None
     } else {
-        fadeIn(animationSpec = tween(durationMillis = 200)) +
+        fadeIn(animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS)) +
             slideInVertically(
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
                 initialOffsetY = { it / 12 }
             )
     }
@@ -215,6 +275,9 @@ fun InsightsSheet(
         mutableStateOf(initialCompactMonth(stats.periodStart, stats.periodEnd, LocalDate.now()).toString())
     }
     val compactMonth = YearMonth.parse(compactMonthKey)
+    val calendarMonths = remember(stats.periodStart, stats.periodEnd, allDays) {
+        availableCalendarMonths(stats.periodStart, stats.periodEnd, allDays.keys)
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         AnimatedVisibility(
@@ -249,13 +312,16 @@ fun InsightsSheet(
                 }
             }
 
-            if (monthsInPeriod(stats.periodStart, stats.periodEnd).isNotEmpty()) {
+            if (calendarMonths.isNotEmpty()) {
                 CompactMonthCalendar(
                     month = compactMonth,
+                    months = calendarMonths,
                     stats = stats,
+                    allDays = allDays,
                     expectedDailyMinutes = expectedDailyMinutes,
                     periodStart = stats.periodStart,
                     periodEnd = stats.periodEnd,
+                    reduceMotion = reduceMotion,
                     onSelectDay = onSelectDay,
                     onMonthChange = { compactMonthKey = it.toString() }
                 )
@@ -345,21 +411,47 @@ fun InsightsSheet(
     }
 }
 
-/** Calendário mensal compacto que usa o mesmo contêiner rolável da folha. */
+/** Calendário mensal compacto único com navegação por meses retroativos e relógio animado nos dias incompletos. */
 @Composable
 private fun CompactMonthCalendar(
     month: YearMonth,
+    months: List<YearMonth>,
     stats: PeriodStats,
+    allDays: Map<String, WorkDayStats>,
     expectedDailyMinutes: Int?,
     periodStart: LocalDate,
     periodEnd: LocalDate,
+    reduceMotion: Boolean,
     onSelectDay: (String) -> Unit,
     onMonthChange: (YearMonth) -> Unit
 ) {
-    val months = monthsInPeriod(periodStart, periodEnd)
-    val index = months.indexOf(month).coerceAtLeast(0)
+    val periodMonths = remember(periodStart, periodEnd) { monthsInPeriod(periodStart, periodEnd) }
+    val index = months.indexOf(month).takeIf { it >= 0 } ?: months.lastIndex.coerceAtLeast(0)
+    val inActivePeriodMonth = isMonthInPeriod(month, periodStart, periodEnd)
     val target = expectedDailyMinutes ?: stats.averageMinutes
-    val weeks = monthWeeks(month)
+    val weeks = remember(month) { monthWeeks(month) }
+    val hasIncompleteInMonth = remember(weeks, allDays, periodStart, periodEnd) {
+        weeks.flatten().filterNotNull().any { date ->
+            val day = allDays[insightDateFormatter.format(date)]
+            val inPeriod = !date.isBefore(periodStart) && !date.isAfter(periodEnd)
+            dayVisualState(day, inPeriod || day != null) == DayVisualState.INCOMPLETE
+        }
+    }
+    val clockRotation = if (hasIncompleteInMonth && !reduceMotion) {
+        val transition = rememberInfiniteTransition(label = "incompleteClock")
+        val angle by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = FULL_ROTATION_DEGREES,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = CLOCK_ROTATION_DURATION_MS, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "incompleteClockRotation"
+        )
+        angle
+    } else {
+        0f
+    }
     val colors = MaterialTheme.colorScheme
 
     Surface(
@@ -371,7 +463,7 @@ private fun CompactMonthCalendar(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     enabled = index > 0,
-                    onClick = { onMonthChange(months[index - 1]) },
+                    onClick = { onMonthChange(stepCalendarMonth(month, months, -1)) },
                     modifier = Modifier.size(44.dp)
                 ) {
                     Icon(Icons.Outlined.ChevronLeft, contentDescription = "Mês anterior")
@@ -386,22 +478,29 @@ private fun CompactMonthCalendar(
                 )
                 IconButton(
                     enabled = index < months.lastIndex,
-                    onClick = { onMonthChange(months[index + 1]) },
+                    onClick = { onMonthChange(stepCalendarMonth(month, months, 1)) },
                     modifier = Modifier.size(44.dp)
                 ) {
                     Icon(Icons.Outlined.ChevronRight, contentDescription = "Próximo mês")
                 }
             }
             if (months.size > 1) {
+                val subtitle = when {
+                    !inActivePeriodMonth ->
+                        "Histórico (fora do período atual) · ${index + 1} de ${months.size}"
+                    months.size == periodMonths.size ->
+                        "Meses do período: " + periodMonths.joinToString(" · ") {
+                            it.format(monthTitleFormatter).replaceFirstChar { first -> first.uppercaseChar() }
+                        }
+                    else ->
+                        "Período atual · ${index + 1} de ${months.size} meses disponíveis"
+                }
                 Text(
-                    text = "Meses do período: " + months.joinToString(" · ") {
-                        it.format(monthTitleFormatter).replaceFirstChar { first -> first.uppercaseChar() }
-                    },
+                    text = subtitle,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics {
-                            contentDescription = "Meses disponíveis no período: " +
-                                months.joinToString(" e ") { it.format(monthTitleFormatter) }
+                            contentDescription = "Navegação de meses: $subtitle"
                         },
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelSmall,
@@ -423,13 +522,15 @@ private fun CompactMonthCalendar(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     week.forEach { date ->
                         if (date == null) {
-                            Spacer(Modifier.weight(1f).height(36.dp))
+                            Spacer(Modifier.weight(1f).height(38.dp))
                         } else {
                             CompactHeatDayCell(
                                 date = date,
-                                day = stats.days[insightDateFormatter.format(date)],
+                                day = allDays[insightDateFormatter.format(date)],
                                 inPeriod = !date.isBefore(periodStart) && !date.isAfter(periodEnd),
                                 target = target,
+                                reduceMotion = reduceMotion,
+                                clockRotation = clockRotation,
                                 modifier = Modifier.weight(1f),
                                 onSelectDay = onSelectDay
                             )
@@ -438,7 +539,7 @@ private fun CompactMonthCalendar(
                 }
             }
             Text(
-                "Toque em um dia para ver os comprovantes.",
+                "Toque em um dia para ver os comprovantes. Relógio: dia incompleto · Ponto cinza: ocorrência.",
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.onSurfaceVariant
             )
@@ -452,34 +553,52 @@ private fun CompactHeatDayCell(
     day: WorkDayStats?,
     inPeriod: Boolean,
     target: Int?,
+    reduceMotion: Boolean,
+    clockRotation: Float,
     modifier: Modifier,
     onSelectDay: (String) -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val state = dayVisualState(day, inPeriod)
+    val hasRecord = day != null
+    val isInteractive = inPeriod || hasRecord
+    val state = dayVisualState(day, isInteractive)
     val minutes = day?.minutes ?: 0
-    val level = if (inPeriod) dayHeatLevel(minutes, target) else HeatLevel.NONE
+    val level = if (isInteractive) dayHeatLevel(minutes, target) else HeatLevel.NONE
     val fill = when (level) {
         HeatLevel.FULL -> colors.primary
         HeatLevel.MEDIUM -> colors.primary.copy(alpha = 0.55f)
         HeatLevel.LOW -> colors.primary.copy(alpha = 0.22f)
         HeatLevel.NONE -> if (inPeriod) colors.surface else Color.Transparent
     }
+    val textColor = when {
+        level == HeatLevel.FULL -> colors.onPrimary
+        isInteractive -> colors.onSurface
+        else -> colors.onSurface.copy(alpha = MUTED_DAY_ALPHA)
+    }
     val dateText = insightDateFormatter.format(date)
     val description = buildList {
         add(dateText)
         when (state) {
             DayVisualState.COMPLETE -> add("saída ${day?.exitTime}")
-            DayVisualState.INCOMPLETE -> add("pendência${day?.issues?.let { ": ${dayIssueSummary(it)}" } ?: ""}")
-            DayVisualState.NONE -> add(if (inPeriod) "sem registro" else "fora do período")
+            DayVisualState.INCOMPLETE -> add(
+                "pendência${day?.issues?.takeIf { it.isNotEmpty() }?.let { ": ${dayIssueSummary(it)}" } ?: ""}"
+            )
+            DayVisualState.NONE -> add(
+                when {
+                    day != null && day.occurrences.isNotEmpty() -> dayOccurrenceSummary(day.occurrences)
+                    inPeriod -> "sem registro"
+                    else -> "fora do período"
+                }
+            )
         }
+        if (!inPeriod && hasRecord) add("mês anterior")
         if (day?.exitCrossesMidnight == true) add("dia seguinte")
     }.joinToString(", ")
 
     Box(
         modifier = modifier
-            .height(36.dp)
-            .clickable(enabled = inPeriod) { onSelectDay(dateText) }
+            .height(38.dp)
+            .clickable(enabled = isInteractive) { onSelectDay(dateText) }
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center
     ) {
@@ -493,16 +612,38 @@ private fun CompactHeatDayCell(
             Text(
                 date.dayOfMonth.toString(),
                 style = MaterialTheme.typography.labelSmall,
-                color = if (level == HeatLevel.FULL) colors.onPrimary else colors.onSurface
+                color = textColor
             )
         }
         if (state == DayVisualState.INCOMPLETE) {
+            val iconRotation = if (shouldAnimateClock(state, reduceMotion)) clockRotation else 0f
+            Icon(
+                Icons.Outlined.Schedule,
+                contentDescription = null,
+                tint = colors.onSurface.copy(alpha = 0.78f),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(2.dp)
+                    .size(11.dp)
+                    .rotate(iconRotation)
+            )
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
+                    .padding(2.dp)
                     .size(6.dp)
                     .clip(CircleShape)
                     .background(colors.error)
+            )
+        }
+        if (day != null && day.occurrences.isNotEmpty()) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 1.dp)
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(colors.onSurfaceVariant)
             )
         }
     }
