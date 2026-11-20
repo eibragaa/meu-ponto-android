@@ -1,4 +1,4 @@
-name: Beta Semanal (playBeta + githubBeta)
+name: Beta (playBeta + githubBeta)
 
 on:
   push:
@@ -81,28 +81,21 @@ jobs:
         with:
           tag_name: ${{ steps.beta_version.outputs.tag }}
           name: "Meu Ponto Beta • ${{ steps.beta_version.outputs.beta_version_name }}"
+          generate_release_notes: true
           body: |
-            ## ⚡️ Novo beta disponível
+            ## Novo beta disponível
 
-            **Meu Ponto Beta • ${{ steps.beta_version.outputs.beta_version_name }}** — pré-view do que vem sexta. Instale, teste e conte o que achou.
-
-            ## Novidades
-            - (descreva aqui o que entrou nesta semana, 2–3 itens no máximo)
-
-            ## Correções e melhorias
-            - (correções que você vai notar no uso diário)
+            **Meu Ponto Beta • ${{ steps.beta_version.outputs.beta_version_name }}** — versão de teste antes da promoção oficial.
 
             ## Como instalar
             - Baixe o APK abaixo (`Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk`) e instale.
             - Aparece como **Meu Ponto Beta** na tela inicial, ao lado do app oficial.
             - Convive com o app oficial (`br.com.jean.meuponto.beta`).
-            - Este beta **não** vira atualização automática. A versão oficial sai sexta 22:00 BRT.
+            - Este beta **não** vira atualização automática. A versão oficial só é publicada após aprovação manual.
 
             ## Qual arquivo baixar?
-            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk` — em geral é este: busca sozinho a próxima versão.
-            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}.apk` — sem updater, só teste manual.
-
-            **Obrigado por testar!** Qualquer bug, conta aqui.
+            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk` — com verificação de atualização.
+            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}.apk` — sem updater, apenas teste manual.
           draft: false
           prerelease: true
           files: |
