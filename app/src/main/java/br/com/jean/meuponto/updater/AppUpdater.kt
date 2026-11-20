@@ -32,6 +32,11 @@ object AppUpdater {
     const val GITHUB_REPO = "meu-ponto-android"
     private const val GITHUB_API_LATEST = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
 
+    /** Quantidade de releases recentes lidas no canal beta; cobre dezenas de betas/oficiais com payload curto. */
+    private const val GITHUB_RELEASES_PAGE_SIZE = 20
+    private const val GITHUB_API_RELEASES =
+        "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases?per_page=$GITHUB_RELEASES_PAGE_SIZE"
+
     /** Tempo máximo para abrir a conexão com a API do GitHub. */
     const val UPDATE_CONNECT_TIMEOUT_MS = 10_000
 
@@ -51,6 +56,29 @@ object AppUpdater {
             }
         } catch (_: Exception) {
             "0.0.0"
+        }
+    }
+
+    /** Lê o `versionCode` instalado (usado pelo canal beta para comparar `beta-v<versionCode>`). */
+    fun getInstalledVersionCode(context: Context): Long {
+        return try {
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.PackageInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode.toLong()
+            }
+        } catch (_: Exception) {
+            0L
         }
     }
 
@@ -78,9 +106,16 @@ object AppUpdater {
         return false
     }
 
-    suspend fun checkForUpdates(currentVersion: String): UpdateCheckResult = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdates(
+        currentVersion: String,
+        channel: UpdateChannel = UpdateChannel.OFFICIAL,
+        currentVersionCode: Long = 0L
+    ): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
-            requestLatestRelease(currentVersion)
+            when (channel) {
+                UpdateChannel.OFFICIAL -> requestLatestRelease(currentVersion)
+                UpdateChannel.BETA -> requestBetaReleases(currentVersionCode)
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (_: UnknownHostException) {
@@ -92,14 +127,18 @@ object AppUpdater {
         }
     }
 
-    private fun requestLatestRelease(currentVersion: String): UpdateCheckResult {
-        val connection = (URL(GITHUB_API_LATEST).openConnection() as HttpURLConnection).apply {
+    private fun openGitHubGet(url: String): HttpURLConnection {
+        return (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             setRequestProperty("User-Agent", "MeuPonto-App")
             setRequestProperty("Accept", "application/vnd.github.v3+json")
             connectTimeout = UPDATE_CONNECT_TIMEOUT_MS
             readTimeout = UPDATE_READ_TIMEOUT_MS
         }
+    }
+
+    private fun requestLatestRelease(currentVersion: String): UpdateCheckResult {
+        val connection = openGitHubGet(GITHUB_API_LATEST)
 
         return try {
             when (val statusCode = connection.responseCode) {
@@ -112,6 +151,33 @@ object AppUpdater {
                         UpdateCheckResult.Failed(UpdateFailure.INVALID_RESPONSE)
                     } else {
                         evaluateRelease(payload, currentVersion)
+                    }
+                }
+                else -> if (isReleaseMissingStatus(statusCode)) {
+                    UpdateCheckResult.UpToDate
+                } else {
+                    UpdateCheckResult.Failed(failureForHttpStatus(statusCode))
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun requestBetaReleases(currentVersionCode: Long): UpdateCheckResult {
+        val connection = openGitHubGet(GITHUB_API_RELEASES)
+
+        return try {
+            when (val statusCode = connection.responseCode) {
+                HttpURLConnection.HTTP_OK -> {
+                    val jsonString = connection.inputStream
+                        .bufferedReader(Charsets.UTF_8)
+                        .use { it.readText() }
+                    val releases = parseReleasesList(jsonString)
+                    if (releases == null) {
+                        UpdateCheckResult.Failed(UpdateFailure.INVALID_RESPONSE)
+                    } else {
+                        evaluateBetaReleases(releases, currentVersionCode)
                     }
                 }
                 else -> if (isReleaseMissingStatus(statusCode)) {

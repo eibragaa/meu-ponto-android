@@ -39,6 +39,15 @@ enum class UpdateFailure {
     NO_APK
 }
 
+/** Canal de distribuição consultado pelo updater. */
+enum class UpdateChannel {
+    /** Releases oficiais (`/releases/latest`, ignorando rascunhos, pré-releases e tags `beta-v*`). */
+    OFFICIAL,
+
+    /** Canal beta (`/releases`, aceitando apenas pré-releases com tag `beta-v<versionCode>`). */
+    BETA
+}
+
 /**
  * Relação entre a assinatura do APK baixado e a do app instalado.
  *
