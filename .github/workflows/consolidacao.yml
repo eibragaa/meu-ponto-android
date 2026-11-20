@@ -1,9 +1,6 @@
-name: Consolidar Beta -> Release Oficial (sexta)
+name: Consolidar Beta -> Release Oficial (manual)
 
 on:
-  schedule:
-    # Sexta 22:00 BRT = sabado 01:00 UTC
-    - cron: '0 1 * * 6'
   workflow_dispatch:
 
 permissions:
@@ -45,6 +42,21 @@ jobs:
           echo "version_name=$NEXT_NAME" >> "$GITHUB_OUTPUT"
           echo "tag=v${NEXT_NAME}" >> "$GITHUB_OUTPUT"
 
+      - name: Guard against existing tag or release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release_version.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Erro: a tag ${TAG} já existe no repositório. Atualize versionName/versionCode em app/build.gradle.kts antes de gerar nova release oficial."
+            exit 1
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Erro: a release ${TAG} já existe no GitHub. Abortando para não sobrescrever release publicada."
+            exit 1
+          fi
+
       - name: Run unit tests
         run: ./gradlew :app:testPlayDebugUnitTest :app:testGithubDebugUnitTest :app:testPlayBetaDebugUnitTest :app:testGithubBetaDebugUnitTest --no-daemon -PversionCodeOverride=${{ steps.release_version.outputs.version_code }} -PversionNameOverride=${{ steps.release_version.outputs.version_name }}
 
@@ -66,29 +78,20 @@ jobs:
         run: |
           cp app/build/outputs/apk/github/release/app-github-release.apk "app/build/outputs/apk/github/release/Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk"
 
-      - name: Publish official release (latest)
+      - name: Publish official release (draft para revisão)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_version.outputs.tag }}
           name: "Meu Ponto • ${{ steps.release_version.outputs.tag }}"
+          generate_release_notes: true
           body: |
-            ## ✨ Nova versão disponível
-
-            **Meu Ponto • ${{ steps.release_version.outputs.tag }}** — tudo que foi testado no beta da semana, agora oficial.
-
-            ## Novidades
-            - (descreva aqui o que entrou, 2–3 itens no máximo)
-
-            ## Correções e melhorias
-            - (o que ficou mais rápido, mais claro ou mais seguro)
+            **Meu Ponto • ${{ steps.release_version.outputs.tag }}** — rascunho de release oficial aguardando revisão antes da publicação.
 
             ## Como atualizar
-            - O app **já busca sozinho** esta versão (updater automático).
-            - Quer baixar manual? Pegue `Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk` abaixo.
+            - O app oficial busca sozinho esta versão após a publicação (updater automático).
+            - Para baixar manualmente, pegue `Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk` abaixo.
             - Betas (`beta-v*`) não aparecem como atualização oficial.
-
-            **Obrigado!** Qualquer feedback ajuda a próxima versão.
-          draft: false
+          draft: true
           prerelease: false
           files: |
             app/build/outputs/apk/github/release/Meu-Ponto-${{ steps.release_version.outputs.tag }}.apk
