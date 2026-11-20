@@ -4,6 +4,8 @@ import br.com.jean.meuponto.domain.DayIssue
 import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.WorkDayStats
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.YearMonth
@@ -139,5 +141,79 @@ class InsightsHeatTest {
     fun nonPositiveTargetIsTreatedAsNoTarget() {
         assertEquals(HeatLevel.LOW, dayHeatLevel(480, 0))
         assertEquals(HeatLevel.NONE, dayHeatLevel(0, 0))
+    }
+
+    @Test
+    fun `relogio gira apenas em dias incompletos sem movimento reduzido`() {
+        assertTrue(shouldAnimateClock(DayVisualState.INCOMPLETE, reduceMotion = false))
+        assertFalse(shouldAnimateClock(DayVisualState.INCOMPLETE, reduceMotion = true))
+        assertFalse(shouldAnimateClock(DayVisualState.COMPLETE, reduceMotion = false))
+        assertFalse(shouldAnimateClock(DayVisualState.NONE, reduceMotion = false))
+    }
+
+    @Test
+    fun `meses disponiveis incluem meses retroativos com comprovantes ate o periodo atual`() {
+        val start = LocalDate.of(2026, 11, 1)
+        val end = LocalDate.of(2026, 11, 30)
+        val recorded = listOf("15/09/2026", "02/10/2026", "data-invalida", "")
+
+        assertEquals(
+            listOf(
+                YearMonth.of(2026, 9),
+                YearMonth.of(2026, 10),
+                YearMonth.of(2026, 11)
+            ),
+            availableCalendarMonths(start, end, recorded)
+        )
+    }
+
+    @Test
+    fun `meses disponiveis cruzam virada de ano e mantem so periodo sem historico anterior`() {
+        val start = LocalDate.of(2026, 2, 1)
+        val end = LocalDate.of(2026, 2, 28)
+
+        assertEquals(
+            listOf(
+                YearMonth.of(2025, 12),
+                YearMonth.of(2026, 1),
+                YearMonth.of(2026, 2)
+            ),
+            availableCalendarMonths(start, end, listOf("20/12/2025"))
+        )
+        assertEquals(
+            listOf(YearMonth.of(2026, 2)),
+            availableCalendarMonths(start, end, emptyList())
+        )
+        assertEquals(
+            emptyList<YearMonth>(),
+            availableCalendarMonths(end, start, listOf("15/01/2026"))
+        )
+    }
+
+    @Test
+    fun `navegacao por meses retroativos avanca recua e respeita limites`() {
+        val months = listOf(
+            YearMonth.of(2026, 9),
+            YearMonth.of(2026, 10),
+            YearMonth.of(2026, 11)
+        )
+
+        assertEquals(YearMonth.of(2026, 10), stepCalendarMonth(YearMonth.of(2026, 11), months, -1))
+        assertEquals(YearMonth.of(2026, 9), stepCalendarMonth(YearMonth.of(2026, 10), months, -1))
+        assertEquals(YearMonth.of(2026, 9), stepCalendarMonth(YearMonth.of(2026, 9), months, -1))
+        assertEquals(YearMonth.of(2026, 11), stepCalendarMonth(YearMonth.of(2026, 10), months, 1))
+        assertEquals(YearMonth.of(2026, 11), stepCalendarMonth(YearMonth.of(2026, 11), months, 1))
+    }
+
+    @Test
+    fun `identifica corretamente se o mes pertence ao periodo atual`() {
+        val start = LocalDate.of(2026, 10, 21)
+        val end = LocalDate.of(2026, 11, 20)
+
+        assertFalse(isMonthInPeriod(YearMonth.of(2026, 9), start, end))
+        assertTrue(isMonthInPeriod(YearMonth.of(2026, 10), start, end))
+        assertTrue(isMonthInPeriod(YearMonth.of(2026, 11), start, end))
+        assertFalse(isMonthInPeriod(YearMonth.of(2026, 12), start, end))
+        assertFalse(isMonthInPeriod(YearMonth.of(2026, 11), end, start))
     }
 }
