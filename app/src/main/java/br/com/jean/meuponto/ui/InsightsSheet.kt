@@ -3,7 +3,6 @@ package br.com.jean.meuponto.ui
 import android.animation.ValueAnimator
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,7 +41,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -52,7 +49,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -60,12 +56,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import br.com.jean.meuponto.R
 import br.com.jean.meuponto.domain.PeriodStats
 import br.com.jean.meuponto.domain.WorkDayStats
 import br.com.jean.meuponto.domain.dayIssueSummary
-import br.com.jean.meuponto.domain.dayOccurrenceSummary
 import br.com.jean.meuponto.domain.formatMinutes
 import br.com.jean.meuponto.domain.formatSignedMinutes
 import java.time.LocalDate
@@ -509,238 +503,6 @@ private fun CompactHeatDayCell(
                     .size(6.dp)
                     .clip(CircleShape)
                     .background(colors.error)
-            )
-        }
-    }
-}
-
-/**
- * Cartões com uma grade para cada mês tocado pelo período: título, cabeçalho da semana e um dia por célula.
- *
- * A referência de cor é [expectedDailyMinutes] quando informada; senão, a média do período. Se a média
- * for zero (nenhuma hora no período), [dayHeatLevel] recebe a referência zerada e cada dia com horas cai em LOW.
- */
-@Composable
-private fun MonthHeatCard(stats: PeriodStats, expectedDailyMinutes: Int?, onSelectDay: (String) -> Unit) {
-    val target = expectedDailyMinutes ?: stats.averageMinutes
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        monthsInPeriod(stats.periodStart, stats.periodEnd).forEach { month ->
-            MonthHeatGrid(
-                month = month,
-                stats = stats,
-                target = target,
-                expectedDailyMinutes = expectedDailyMinutes,
-                onSelectDay = onSelectDay
-            )
-        }
-    }
-}
-
-@Composable
-private fun MonthHeatGrid(
-    month: YearMonth,
-    stats: PeriodStats,
-    target: Int?,
-    expectedDailyMinutes: Int?,
-    onSelectDay: (String) -> Unit
-) {
-    val reduceMotion = remember { !ValueAnimator.areAnimatorsEnabled() }
-    val animationProgress = remember(month) { Animatable(initialDayAnimationProgress(reduceMotion)) }
-    LaunchedEffect(month, reduceMotion) {
-        if (reduceMotion) {
-            animationProgress.snapTo(1f)
-        } else if (animationProgress.value < 1f) {
-            animationProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing)
-            )
-        }
-    }
-    val weeks = monthWeeks(month)
-    val legend = "Preenchimento: horas do dia contra " +
-        (expectedDailyMinutes?.let { "a jornada de ${formatMinutes(it)}" } ?: "a média do período (${formatMinutes(stats.averageMinutes)})") +
-        ". Ponto vermelho: dia com pendência. Ponto cinza: ocorrência."
-
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                month.format(monthTitleFormatter).replaceFirstChar { it.uppercaseChar() },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                weekdayHeaders.forEach { header ->
-                    Text(
-                        header,
-                        Modifier.weight(1f),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            weeks.forEach { week ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    week.forEach { date ->
-                        if (date == null) {
-                            Spacer(Modifier.weight(1f))
-                        } else {
-                            HeatDayCell(
-                                date = date,
-                                day = stats.days[insightDateFormatter.format(date)],
-                                inPeriod = !date.isBefore(stats.periodStart) && !date.isAfter(stats.periodEnd),
-                                target = target,
-                                animationProgress = animationProgress.value,
-                                modifier = Modifier.weight(1f),
-                                onSelectDay = onSelectDay
-                            )
-                        }
-                    }
-                }
-            }
-            Text(
-                legend,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-/**
- * Uma célula da grade. Preenchimento pelo [HeatLevel] do dia; ponto de erro para pendência e ponto
- * neutro para ocorrência. Dias fora do período ficam esmaecidos e não respondem ao toque.
- */
-@Composable
-private fun HeatDayCell(
-    date: LocalDate,
-    day: WorkDayStats?,
-    inPeriod: Boolean,
-    target: Int?,
-    animationProgress: Float,
-    modifier: Modifier,
-    onSelectDay: (String) -> Unit
-) {
-    val colors = MaterialTheme.colorScheme
-    val minutes = day?.minutes ?: 0
-    val level = if (inPeriod) dayHeatLevel(minutes, target) else HeatLevel.NONE
-    val fill = when (level) {
-        HeatLevel.FULL -> colors.primary
-        HeatLevel.MEDIUM -> colors.primary.copy(alpha = 0.55f)
-        HeatLevel.LOW -> colors.primary.copy(alpha = 0.22f)
-        HeatLevel.NONE -> if (inPeriod) colors.surfaceVariant else Color.Transparent
-    }
-    val textColor = when {
-        level == HeatLevel.FULL -> colors.onPrimary
-        inPeriod -> colors.onSurface
-        else -> colors.onSurface.copy(alpha = 0.35f)
-    }
-    val dateText = insightDateFormatter.format(date)
-    val state = dayVisualState(day, inPeriod)
-    val isIncomplete = state == DayVisualState.INCOMPLETE
-    val description = buildList {
-        add(dateText)
-        add(
-            when {
-                !inPeriod -> "fora do período"
-                day == null -> "sem registro"
-                else -> formatMinutes(minutes)
-            }
-        )
-        if (day != null && day.issues.isNotEmpty()) add("pendência: ${dayIssueSummary(day.issues)}")
-        if (day != null && day.occurrences.isNotEmpty()) add(dayOccurrenceSummary(day.occurrences))
-        if (state == DayVisualState.COMPLETE) {
-            add("saída ${day?.exitTime.orEmpty()}")
-            if (day?.exitCrossesMidnight == true) add("dia seguinte")
-        } else if (state == DayVisualState.INCOMPLETE && day?.issues?.isEmpty() == true) {
-            add("pendência: saída não registrada")
-        }
-    }.joinToString(", ")
-
-    val showClock = state != DayVisualState.NONE && animationProgress < 1f
-    val rotation = animationProgress * 360f
-
-    Box(
-        modifier = modifier
-            .aspectRatio(1f)
-            .clip(CircleShape)
-            .background(fill)
-            .clickable(enabled = inPeriod) { onSelectDay(dateText) }
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center
-    ) {
-        if (showClock) {
-            Icon(
-                Icons.Outlined.Schedule,
-                contentDescription = null,
-                tint = colors.onSurface.copy(alpha = 0.7f),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(2.dp)
-                    .size(10.dp)
-                    .rotate(rotation)
-            )
-        }
-        if (state == DayVisualState.COMPLETE && animationProgress >= 1f) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    date.dayOfMonth.toString(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = textColor
-                )
-                Text(
-                    day?.exitTime.orEmpty(),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                    color = textColor
-                )
-            }
-        } else {
-            Text(
-                date.dayOfMonth.toString(),
-                style = MaterialTheme.typography.labelLarge,
-                color = textColor
-            )
-        }
-        if (day != null && day.issues.isNotEmpty()) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(3.dp)
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(colors.error)
-            )
-        }
-        if (day != null && day.occurrences.isNotEmpty()) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 3.dp)
-                    .size(5.dp)
-                    .clip(CircleShape)
-                    .background(colors.onSurfaceVariant)
-            )
-        }
-        if (isIncomplete && animationProgress >= 1f) {
-            Icon(
-                Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = colors.error,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(2.dp)
-                    .size(10.dp)
             )
         }
     }
