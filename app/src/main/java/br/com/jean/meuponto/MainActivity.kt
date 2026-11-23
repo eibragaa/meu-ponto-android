@@ -134,6 +134,7 @@ import br.com.jean.meuponto.data.decodePreview
 import br.com.jean.meuponto.data.recognizeAndSave
 import br.com.jean.meuponto.data.restoreBackup
 import br.com.jean.meuponto.data.shareAsPdf
+import br.com.jean.meuponto.data.shareTimesheetPdf
 import br.com.jean.meuponto.domain.DayOccurrence
 import br.com.jean.meuponto.domain.PayrollSettingsStore
 import br.com.jean.meuponto.domain.PeriodStats
@@ -168,6 +169,7 @@ import br.com.jean.meuponto.ui.HeroNightTop
 import br.com.jean.meuponto.ui.Ink
 import br.com.jean.meuponto.ui.InsightsSheet
 import br.com.jean.meuponto.ui.JourneyItem
+import br.com.jean.meuponto.ui.ManualPunchSheet
 import br.com.jean.meuponto.ui.MeuPontoTheme
 import br.com.jean.meuponto.ui.Mint
 import br.com.jean.meuponto.ui.MonthSection
@@ -294,6 +296,8 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     // Uma flag por folha (bottom sheet) aberta. São mutuamente exclusivas na prática; unificá-las
     // em um único estado selado está registrado como pendência no padrão de engenharia (ENG-1).
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
+    var showManualPunch by rememberSaveable { mutableStateOf(false) }
+    var manualPunchChoice by remember { mutableStateOf<PunchChoice?>(null) }
     var showBackupSheet by rememberSaveable { mutableStateOf(false) }
     var showOrganizeSheet by rememberSaveable { mutableStateOf(false) }
     var showPayrollSettings by rememberSaveable { mutableStateOf(false) }
@@ -677,6 +681,12 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                         shareAsPdf(context, selected)
                         isSelectionMode = false
                         selectedReceiptIds = emptySet()
+                    },
+                    onExportTimesheet = {
+                        val selected = visibleReceipts.filter { it.id in selectedReceiptIds }
+                        shareTimesheetPdf(context, selected, payrollSettings)
+                        isSelectionMode = false
+                        selectedReceiptIds = emptySet()
                     }
                 )
             }
@@ -798,6 +808,41 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 pendingPunch = punch
                 showAddSheet = false
                 importReceipt.launch(arrayOf("image/*"))
+            },
+            onManual = { punch ->
+                pendingPunch = null
+                showAddSheet = false
+                manualPunchChoice = punch
+                showManualPunch = true
+            }
+        )
+    }
+    if (showManualPunch) {
+        ManualPunchSheet(
+            initialPunch = manualPunchChoice,
+            onDismiss = {
+                showManualPunch = false
+                manualPunchChoice = null
+            },
+            onSave = { workDate, entryTime, exitTime, occurrence, note ->
+                scope.launch {
+                    dao.insert(
+                        Receipt(
+                            capturedAt = System.currentTimeMillis(),
+                            workDate = workDate,
+                            workTime = entryTime ?: exitTime ?: "",
+                            imagePath = "",
+                            recognizedText = note,
+                            entryTime = entryTime,
+                            exitTime = exitTime,
+                            needsReview = false,
+                            occurrence = occurrence
+                        )
+                    )
+                    showManualPunch = false
+                    manualPunchChoice = null
+                    showMessage("Ponto manual salvo.")
+                }
             }
         )
     }
@@ -850,6 +895,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                 showInsights = false
             },
             expectedDailyMinutes = payrollSettings.expectedDailyMinutes,
+            onExportTimesheet = { shareTimesheetPdf(context, allReceipts, payrollSettings) },
             onOpenReminder = {
                 showInsights = false
                 showReminderSheet = true
@@ -1244,7 +1290,8 @@ private fun SectionHeader(
     isSelectionMode: Boolean,
     selectedCount: Int,
     onToggleSelection: () -> Unit,
-    onExport: () -> Unit
+    onExport: () -> Unit,
+    onExportTimesheet: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
@@ -1258,7 +1305,10 @@ private fun SectionHeader(
         Spacer(Modifier.weight(1f))
         if (isSelectionMode) {
             TextButton(onClick = onExport, enabled = selectedCount > 0) {
-                Text(if (selectedCount > 0) "PDF ($selectedCount)" else "PDF")
+                Text(if (selectedCount > 0) "Canhotos ($selectedCount)" else "Canhotos")
+            }
+            TextButton(onClick = onExportTimesheet, enabled = selectedCount > 0) {
+                Text("Espelho")
             }
             TextButton(onClick = onToggleSelection) { Text("Cancelar") }
         } else {
@@ -1824,7 +1874,8 @@ private fun AddReceiptSheet(
     punch: PunchChoice?,
     onDismiss: () -> Unit,
     onCamera: (PunchChoice?) -> Unit,
-    onGallery: (PunchChoice?) -> Unit
+    onGallery: (PunchChoice?) -> Unit,
+    onManual: (PunchChoice?) -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Column(Modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1838,6 +1889,7 @@ private fun AddReceiptSheet(
             Spacer(Modifier.height(4.dp))
             SourceOption(Icons.Outlined.CameraAlt, "Usar câmera", "Fotografe agora e deixe o OCR organizar") { onCamera(punch) }
             SourceOption(Icons.Outlined.FolderOpen, "Escolher da galeria", "Importe uma imagem já salva") { onGallery(punch) }
+            SourceOption(Icons.Outlined.Edit, "Digitar manualmente", "Sem foto: informe data e horários do ponto") { onManual(punch) }
         }
     }
 }

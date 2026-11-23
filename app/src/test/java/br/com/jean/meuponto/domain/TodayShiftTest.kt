@@ -7,7 +7,6 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 class TodayShiftTest {
 
@@ -52,9 +51,26 @@ class TodayShiftTest {
     }
 
     @Test
+    fun `turno da manha encerrado com meta pendente retorna ON_BREAK com horarios de retorno e saida previstos`() {
+        val receipts = listOf(
+            receipt(1, todayStr, entry = "08:00", exit = "12:00") // 4h trabalhadas = 240 min
+        )
+        val now = LocalDateTime.of(today, LocalTime.of(12, 30))
+        val status = calculateTodayShiftStatus(receipts, now, expectedDailyMinutes = 480)
+
+        assertEquals(TodayShiftState.ON_BREAK, status.state)
+        assertEquals("08:00", status.entryTime)
+        assertEquals("12:00", status.breakStartTime)
+        assertEquals("13:00", status.suggestedReturnTime) // 12:00 + 60 min
+        assertEquals("17:00", status.estimatedExitTime)   // 13:00 + 4h restantes
+        assertEquals(240, status.minutesWorked)
+        assertEquals(240, status.remainingMinutesNeeded)
+    }
+
+    @Test
     fun `jornada concluida hoje retorna COMPLETED com total trabalhado`() {
         val receipts = listOf(
-            receipt(1, todayStr, entry = "07:00", exit = "16:00")
+            receipt(1, todayStr, entry = "07:00", exit = "16:00") // 9h trabalhadas = 540 min
         )
         val now = LocalDateTime.of(today, LocalTime.of(18, 0))
         val status = calculateTodayShiftStatus(receipts, now)
@@ -63,6 +79,19 @@ class TodayShiftTest {
         assertEquals("07:00", status.entryTime)
         assertEquals("16:00", status.exitTime)
         assertEquals(540, status.minutesWorked) // 9 horas = 540 min
+    }
+
+    @Test
+    fun `turno parcial encerrado ha mais de 4 horas retorna COMPLETED`() {
+        val receipts = listOf(
+            receipt(1, todayStr, entry = "08:00", exit = "12:00") // 4h trabalhadas
+        )
+        // Mais de 4h decorridas desde as 12:00 (17:00)
+        val now = LocalDateTime.of(today, LocalTime.of(17, 0))
+        val status = calculateTodayShiftStatus(receipts, now, expectedDailyMinutes = 480)
+
+        assertEquals(TodayShiftState.COMPLETED, status.state)
+        assertEquals(240, status.minutesWorked)
     }
 
     @Test

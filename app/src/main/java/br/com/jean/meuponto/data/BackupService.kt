@@ -30,6 +30,7 @@ import org.json.JSONObject
  * AES-GCM. Sem senha, o arquivo é apenas o ZIP (imagens + `manifest.json`).
  *
  * O manifest guarda os campos da tabela `receipts`, exceto a imagem, que vai em `images/<id>.jpg`.
+ * Registros manuais sem imagem são devidamente preservados com `imageEntry = ""`.
  * A restauração é defensiva por natureza (arquivo vem de fora): valida número de entradas, tamanho
  * por arquivo, path traversal e quantidade de registros antes de tocar no banco.
  */
@@ -45,8 +46,9 @@ internal const val MAX_RESTORE_MANIFEST_ITEMS = 5_000
 /**
  * Gera o backup em [destination] e devolve quantos comprovantes entraram no manifest.
  *
- * Comprovantes cujo arquivo de imagem sumiu do disco são ignorados (evita backup quebrado).
- * O ZIP é montado em `cacheDir` e apagado no `finally`, porque o destino é um `Uri` de SAF.
+ * Comprovantes com imagem no disco têm o arquivo empacotado; comprovantes manuais sem imagem
+ * são preservados no manifest. O ZIP é montado em `cacheDir` e apagado no `finally`, porque o destino
+ * é um `Uri` de SAF.
  */
 internal suspend fun createBackup(context: Context, dao: ReceiptDao, destination: Uri, password: String): Int = withContext(Dispatchers.IO) {
     val receipts = dao.getAll()
@@ -56,11 +58,13 @@ internal suspend fun createBackup(context: Context, dao: ReceiptDao, destination
         ZipOutputStream(BufferedOutputStream(zipFile.outputStream())).use { zip ->
             receipts.forEach { receipt ->
                 val source = File(receipt.imagePath)
-                if (!source.isFile) return@forEach
-                val imageEntry = "images/${receipt.id}.jpg"
-                zip.putNextEntry(ZipEntry(imageEntry))
-                source.inputStream().use { input -> input.copyTo(zip) }
-                zip.closeEntry()
+                val hasImage = receipt.imagePath.isNotBlank() && source.isFile
+                val imageEntry = if (hasImage) "images/${receipt.id}.jpg" else ""
+                if (hasImage) {
+                    zip.putNextEntry(ZipEntry(imageEntry))
+                    source.inputStream().use { input -> input.copyTo(zip) }
+                    zip.closeEntry()
+                }
                 manifest.put(
                     JSONObject()
                         .put("capturedAt", receipt.capturedAt)
@@ -75,76 +79,69 @@ internal suspend fun createBackup(context: Context, dao: ReceiptDao, destination
                 )
             }
             zip.putNextEntry(ZipEntry("manifest.json"))
-            zip.write(manifest.toString().toByteArray(Charsets.UTF_8))
+            manifest.toString().byteInputStream().use { it.copyTo(zip) }
             zip.closeEntry()
         }
-        if (password.isBlank()) {
-            context.contentResolver.openOutputStream(destination)?.use { output ->
+        context.contentResolver.openOutputStream(destination)?.use { output ->
+            if (password.isNotBlank()) {
+                writeEncryptedPayload(zipFile, output, password)
+            } else {
                 zipFile.inputStream().use { it.copyTo(output) }
-            } ?: error("Destino de backup indisponível")
-        } else {
-            encryptBackup(zipFile, context, destination, password)
-        }
-        manifest.length()
+            }
+        } ?: error("Falha ao abrir o arquivo de destino")
+        receipts.size
     } finally {
         zipFile.delete()
     }
 }
 
 /**
- * Restaura um backup e devolve quantos comprovantes foram realmente inseridos.
+ * Restaura comprovantes de [source] para o banco.
  *
- * Dedupe: um comprovante é considerado já restaurado quando `capturedAt` coincide **e** os campos
- * de data/horário/texto reconhecido também coincidem. Isso permite restaurar o mesmo backup duas
- * vezes sem duplicar, mas ainda aceita dois comprovantes tirados no mesmo milissegundo.
+ * Valida o arquivo ZIP de forma defensiva antes de gravar no banco: path traversal dentro do ZIP,
+ * número máximo de arquivos e limite de bytes por imagem. Arquivos duplicados no banco (mesma data,
+ * horários e texto) são ignorados para não poluir o histórico.
  */
-internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri: Uri, password: String): Int = withContext(Dispatchers.IO) {
-    val restoreDir = File(context.cacheDir, "restore_${System.currentTimeMillis()}").apply { mkdirs() }
-    val zipFile = File.createTempFile("meu-ponto-restore-", ".zip", context.cacheDir)
+internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, source: Uri, password: String): Int = withContext(Dispatchers.IO) {
+    val restoreDir = File.createTempFile("meu-ponto-restore-", "", context.cacheDir).apply {
+        delete()
+        mkdirs()
+    }
+    val zipFile = File.createTempFile("meu-ponto-restore-payload-", ".zip", context.cacheDir)
     try {
-        decryptOrCopyBackup(context, sourceUri, zipFile, password)
-        zipFile.inputStream().use { input ->
-            ZipInputStream(BufferedInputStream(input)).use { zip ->
-                var entries = 0
-                while (true) {
-                    val entry = zip.nextEntry ?: break
-                    entries++
-                    if (entries > MAX_RESTORE_ZIP_ENTRIES) error("Backup excede o limite de arquivos")
-                    if (!entry.isDirectory &&
-                        entry.name != "manifest.json" &&
-                        !entry.name.startsWith("images/")
-                    ) {
-                        error("Backup com arquivo inesperado")
-                    }
-                    val maximumBytes = when {
-                        entry.isDirectory -> 0L
-                        entry.name == "manifest.json" -> MAX_RESTORE_MANIFEST_BYTES
-                        else -> MAX_RESTORE_IMAGE_BYTES
-                    }
-                    if (entry.size > maximumBytes) error("Backup excede o tamanho permitido")
-                    val target = File(restoreDir, entry.name)
-                    val rootPath = restoreDir.canonicalPath + File.separator
-                    if (!target.canonicalPath.startsWith(rootPath)) error("Backup inválido")
-                    if (entry.isDirectory) {
-                        target.mkdirs()
-                    } else {
-                        target.parentFile?.mkdirs()
-                        target.outputStream().use { output ->
-                            val buffer = ByteArray(16384)
-                            var total = 0
-                            while (true) {
-                                val read = zip.read(buffer)
-                                if (read == -1) break
-                                total += read
-                                if (total > maximumBytes) error("Backup excede o tamanho permitido")
-                                output.write(buffer, 0, read)
-                            }
-                        }
-                    }
-                    zip.closeEntry()
-                }
+        context.contentResolver.openInputStream(source)?.use { input ->
+            val buffered = BufferedInputStream(input)
+            if (isEncryptedStream(buffered)) {
+                readEncryptedPayload(buffered, zipFile, password)
+            } else {
+                zipFile.outputStream().use { output -> buffered.copyTo(output) }
             }
-        } ?: error("Arquivo de backup indisponível")
+        } ?: error("Falha ao ler o arquivo de backup")
+
+        var entryCount = 0
+        ZipInputStream(BufferedInputStream(zipFile.inputStream())).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                entryCount++
+                if (entryCount > MAX_RESTORE_ZIP_ENTRIES) error("Backup excede o limite de arquivos")
+                val target = File(restoreDir, entry.name).canonicalFile
+                if (!target.path.startsWith(restoreDir.canonicalPath)) {
+                    error("Entrada inválida no backup (path traversal)")
+                }
+                if (entry.isDirectory) {
+                    target.mkdirs()
+                } else {
+                    target.parentFile?.mkdirs()
+                    target.outputStream().use { out ->
+                        val copied = zip.copyTo(out)
+                        val maxBytes = if (entry.name == "manifest.json") MAX_RESTORE_MANIFEST_BYTES else MAX_RESTORE_IMAGE_BYTES
+                        if (copied > maxBytes) error("Arquivo no backup excede o tamanho permitido")
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
 
         val manifestFile = File(restoreDir, "manifest.json")
         if (!manifestFile.isFile) error("Manifesto do backup ausente")
@@ -154,14 +151,16 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
         val restored = buildList {
             for (index in 0 until items.length()) {
                 val item = items.getJSONObject(index)
-                val imageSource = File(restoreDir, item.getString("imageEntry"))
-                if (!imageSource.isFile) continue
+                val imageEntry = item.optString("imageEntry", "")
+                val imageSource = if (imageEntry.isNotBlank()) File(restoreDir, imageEntry) else null
+                val hasImage = imageSource?.isFile == true
+
                 val candidate = Receipt(
                     id = 0,
                     capturedAt = item.getLong("capturedAt"),
                     workDate = item.getString("workDate"),
                     workTime = item.getString("workTime"),
-                    imagePath = imageSource.absolutePath,
+                    imagePath = if (hasImage) imageSource!!.absolutePath else "",
                     recognizedText = item.optString("recognizedText"),
                     entryTime = item.optString("entryTime").takeIf { it.isNotBlank() },
                     exitTime = item.optString("exitTime").takeIf { it.isNotBlank() },
@@ -180,12 +179,17 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
                         existing.occurrence == candidate.occurrence
                 }
                 if (alreadyRestored) continue
-                val imageDestination = File(
-                    destinationDir,
-                    "restored_${candidate.capturedAt}_${System.currentTimeMillis()}_$index.jpg"
-                )
-                imageSource.copyTo(imageDestination, overwrite = true)
-                add(candidate.copy(imagePath = imageDestination.absolutePath))
+
+                if (hasImage) {
+                    val imageDestination = File(
+                        destinationDir,
+                        "restored_${candidate.capturedAt}_${System.currentTimeMillis()}_$index.jpg"
+                    )
+                    imageSource!!.copyTo(imageDestination, overwrite = true)
+                    add(candidate.copy(imagePath = imageDestination.absolutePath))
+                } else {
+                    add(candidate.copy(imagePath = ""))
+                }
             }
         }
         dao.insertAll(restored)
@@ -196,81 +200,67 @@ internal suspend fun restoreBackup(context: Context, dao: ReceiptDao, sourceUri:
     }
 }
 
-/**
- * Deriva a chave AES da senha do usuário com PBKDF2-HMAC-SHA256.
- *
- * [BACKUP_ITERATIONS] segue a recomendação do OWASP (>= 120k para SHA-256); subir esse número
- * invalida a leitura de backups antigos, então qualquer mudança exige versionar o formato.
- */
-private fun deriveBackupKey(password: String, salt: ByteArray): SecretKeySpec {
-    val spec = PBEKeySpec(password.toCharArray(), salt, BACKUP_ITERATIONS, 256)
-    return try {
-        SecretKeySpec(
-            SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded,
-            "AES"
-        )
-    } finally {
-        spec.clearPassword()
-    }
+/** Verifica se os primeiros bytes batem com [BACKUP_MAGIC] sem consumir o stream. */
+private fun isEncryptedStream(stream: BufferedInputStream): Boolean {
+    stream.mark(BACKUP_MAGIC.size)
+    val header = ByteArray(BACKUP_MAGIC.size)
+    val read = stream.read(header)
+    stream.reset()
+    return read == BACKUP_MAGIC.size && header.contentEquals(BACKUP_MAGIC)
 }
 
-private fun encryptBackup(source: File, context: Context, destination: Uri, password: String) {
-    val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
-    val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+private fun writeEncryptedPayload(source: File, destination: java.io.OutputStream, password: String) {
+    destination.write(BACKUP_MAGIC)
+    destination.write(BACKUP_VERSION.toInt())
+
+    val random = SecureRandom()
+    val salt = ByteArray(16).also { random.nextBytes(it) }
+    val iv = ByteArray(12).also { random.nextBytes(it) }
+    destination.write(salt)
+    destination.write(iv)
+
+    val key = deriveKey(password, salt)
     val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-        init(Cipher.ENCRYPT_MODE, deriveBackupKey(password, salt), GCMParameterSpec(128, iv))
+        init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
     }
-    context.contentResolver.openOutputStream(destination)?.use { output ->
-        output.write(BACKUP_MAGIC)
-        output.write(byteArrayOf(BACKUP_VERSION))
-        output.write(salt)
-        output.write(iv)
-        CipherOutputStream(output, cipher).use { encrypted ->
-            source.inputStream().use { it.copyTo(encrypted) }
-        }
-    } ?: error("Destino de backup indisponível")
+
+    CipherOutputStream(destination, cipher).use { cipherOut ->
+        source.inputStream().use { input -> input.copyTo(cipherOut) }
+    }
 }
 
-private fun decryptOrCopyBackup(context: Context, sourceUri: Uri, destination: File, password: String) {
-    context.contentResolver.openInputStream(sourceUri)?.use { input ->
-        val header = ByteArray(BACKUP_MAGIC.size)
-        var read = 0
-        while (read < header.size) {
-            val count = input.read(header, read, header.size - read)
-            if (count <= 0) break
-            read += count
-        }
-        val encrypted = read == BACKUP_MAGIC.size && header.contentEquals(BACKUP_MAGIC)
-        if (!encrypted) {
-            destination.outputStream().use { output ->
-                output.write(header, 0, read)
-                input.copyTo(output)
+private fun readEncryptedPayload(source: BufferedInputStream, destination: File, password: String) {
+    if (password.isBlank()) error("Este backup é protegido por senha")
+    val magic = ByteArray(BACKUP_MAGIC.size)
+    if (source.read(magic) != BACKUP_MAGIC.size || !magic.contentEquals(BACKUP_MAGIC)) {
+        error("Formato de backup inválido")
+    }
+    val version = source.read()
+    if (version != BACKUP_VERSION.toInt()) error("Versão de backup não suportada: $version")
+
+    val salt = ByteArray(16)
+    if (source.read(salt) != salt.size) error("Cabeçalho de backup corrompido")
+    val iv = ByteArray(12)
+    if (source.read(iv) != iv.size) error("Cabeçalho de backup corrompido")
+
+    val key = deriveKey(password, salt)
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+        init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+    }
+
+    CipherInputStream(source, cipher).use { cipherIn ->
+        destination.outputStream().use { output ->
+            try {
+                cipherIn.copyTo(output)
+            } catch (e: Exception) {
+                error("Senha incorreta ou arquivo corrompido")
             }
-            return
         }
-        val version = input.read()
-        if (version != BACKUP_VERSION.toInt()) error("Versão de backup não suportada")
-        val salt = ByteArray(16).also { input.readFully(it) }
-        val iv = ByteArray(12).also { input.readFully(it) }
-        if (password.isBlank()) error("Este backup precisa de uma senha")
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(Cipher.DECRYPT_MODE, deriveBackupKey(password, salt), GCMParameterSpec(128, iv))
-        }
-        try {
-            CipherInputStream(input, cipher).use { decrypted ->
-                destination.outputStream().use { output -> decrypted.copyTo(output) }
-            }
-        } catch (_: Exception) {
-            throw IllegalArgumentException("Senha incorreta ou backup danificado")
-        }
-    } ?: error("Arquivo de backup indisponível")
+    }
 }
 
-private fun java.io.InputStream.readFully(buffer: ByteArray) {
-    var offset = 0
-    while (offset < buffer.size) {
-        val count = read(buffer, offset, buffer.size - offset)
-        if (count <= 0) error("Backup incompleto")
-        offset += count
-    }
+private fun deriveKey(password: String, salt: ByteArray): SecretKeySpec {
+    val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+    val spec = PBEKeySpec(password.toCharArray(), salt, BACKUP_ITERATIONS, 256)
+    return SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
 }
