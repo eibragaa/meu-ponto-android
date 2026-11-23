@@ -43,8 +43,10 @@ jobs:
             NEXT=$((CURRENT + 1))
           fi
           BASE_NAME=$(./gradlew -q :app:printVersionName --no-daemon | tail -1)
+          BETA_NUM=$((NEXT - 190000))
+          BETA_VERSION_NAME="${BASE_NAME}-beta.${BETA_NUM}"
           echo "beta_version_code=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "beta_version_name=${BASE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "beta_version_name=${BETA_VERSION_NAME}" >> "$GITHUB_OUTPUT"
           echo "tag=beta-v${NEXT}" >> "$GITHUB_OUTPUT"
 
       - name: Run unit tests (beta flavors)
@@ -66,8 +68,8 @@ jobs:
       - name: Rename beta APKs
         shell: bash
         run: |
-          cp app/build/outputs/apk/playBeta/release/app-playBeta-release.apk "app/build/outputs/apk/playBeta/release/Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}.apk" || true
           cp app/build/outputs/apk/githubBeta/release/app-githubBeta-release.apk "app/build/outputs/apk/githubBeta/release/Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk" || true
+          cp app/build/outputs/apk/playBeta/release/app-playBeta-release.apk "app/build/outputs/apk/playBeta/release/Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-play.apk" || true
 
       - name: Upload beta APK artifacts
         uses: actions/upload-artifact@v4
@@ -80,24 +82,21 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.beta_version.outputs.tag }}
-          name: "Meu Ponto Beta • ${{ steps.beta_version.outputs.beta_version_name }}"
+          name: "Meu Ponto Beta • v${{ steps.beta_version.outputs.beta_version_name }}"
           generate_release_notes: true
           body: |
             ## Novo beta disponível
 
-            **Meu Ponto Beta • ${{ steps.beta_version.outputs.beta_version_name }}** — versão de teste antes da promoção oficial.
-
-            ## Como instalar
-            - Baixe o APK abaixo (`Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk`) e instale.
-            - Aparece como **Meu Ponto Beta** na tela inicial, ao lado do app oficial.
-            - Convive com o app oficial (`br.com.jean.meuponto.beta`).
-            - Este beta **não** vira atualização automática. A versão oficial só é publicada após aprovação manual.
+            **Meu Ponto Beta • v${{ steps.beta_version.outputs.beta_version_name }} (build ${{ steps.beta_version.outputs.beta_version_code }})** — versão de teste com as últimas melhorias.
 
             ## Qual arquivo baixar?
-            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk` — com verificação de atualização.
-            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}.apk` — sem updater, apenas teste manual.
+            - **`Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk`** (RECOMENDADO): versão do canal beta com auto-atualizador embutido.
+            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-play.apk`: versão sem auto-updater (padrão Play Store).
+
+            ## Instalação e Convivência
+            - Convive perfeitamente com o app oficial na tela inicial (`br.com.jean.meuponto.beta`).
           draft: false
           prerelease: true
           files: |
-            app/build/outputs/apk/playBeta/release/Meu-Ponto-Beta-*.apk
-            app/build/outputs/apk/githubBeta/release/Meu-Ponto-Beta-*.apk
+            app/build/outputs/apk/githubBeta/release/Meu-Ponto-Beta-*-updater.apk
+            app/build/outputs/apk/playBeta/release/Meu-Ponto-Beta-*-play.apk
