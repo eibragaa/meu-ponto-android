@@ -153,7 +153,9 @@ import br.com.jean.meuponto.domain.punchChoiceOf
 import br.com.jean.meuponto.domain.receiptReviewHint
 import br.com.jean.meuponto.domain.receiptTimeLabel
 import br.com.jean.meuponto.domain.suggestedNextPunch
+import br.com.jean.meuponto.domain.calculateTodayShiftStatus
 import br.com.jean.meuponto.ui.Coral
+import br.com.jean.meuponto.ui.TodayCard
 import br.com.jean.meuponto.ui.DaySection
 import br.com.jean.meuponto.ui.DeleteReceiptDialog
 import br.com.jean.meuponto.ui.FILTER_ALL
@@ -593,6 +595,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         suggestedNextPunch(allReceipts, LocalDateTime.now())
     }
 
+    val todayStatus = remember(allReceipts, payrollSettings) {
+        calculateTodayShiftStatus(
+            receipts = allReceipts,
+            now = LocalDateTime.now(),
+            expectedDailyMinutes = payrollSettings.expectedDailyMinutes ?: 480
+        )
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
@@ -627,6 +637,12 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
                         onDismiss = { updateCoordinator?.dismissBanner() }
                     )
                 }
+            }
+            item(key = "today-card") {
+                TodayCard(
+                    status = todayStatus,
+                    onRegisterPunch = ::startScanner
+                )
             }
             item {
                 SummaryCard(
@@ -1033,36 +1049,36 @@ private fun SummaryCard(
         else -> "Faltam ${stats.daysRemaining} dias para o fechamento"
     }
 
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(heroGradient)).padding(22.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(heroGradient)).padding(18.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
                             if (isProcessing) "Organizando seu comprovante" else if (total == 0) "Seu arquivo começa aqui" else "Resumo do período",
                             color = heroText,
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             if (isProcessing) "Lendo data e horário com OCR local…" else periodLabel,
                             color = heroMuted,
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
-                    Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Coral, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Coral, modifier = Modifier.size(24.dp))
                 }
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         formatMinutes(stats.totalMinutes),
                         color = heroNumber,
-                        fontSize = 42.sp,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
-                        lineHeight = 44.sp
+                        lineHeight = 36.sp
                     )
-                    Spacer(Modifier.width(10.dp))
-                    Text("horas\ntrabalhadas", color = heroMuted, style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.width(8.dp))
+                    Text("horas\ntrabalhadas", color = heroMuted, style = MaterialTheme.typography.labelSmall)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.CalendarMonth, contentDescription = null, tint = heroNumber, modifier = Modifier.size(17.dp))
@@ -1653,9 +1669,9 @@ private fun ReceiptThumbnail(path: String) {
 }
 
 /**
- * Barra flutuante de registro rápido em 3 cliques:
- * [Entrada] / [Saída] abrem o scanner direto (destacando a batida esperada pelo turno em aberto)
- * e o botão compacto ao lado abre opções de galeria.
+ * Barra flutuante de registro rápido:
+ * Botão primário expandido abre o scanner diretamente;
+ * botão secundário compacto abre opções da galeria.
  */
 @Composable
 private fun QuickPunchFabBar(
@@ -1668,15 +1684,20 @@ private fun QuickPunchFabBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        QuickPunchFab(
-            label = "Entrada",
-            isSuggested = suggestedPunch == PunchChoice.ENTRY,
-            onClick = { onCameraPunch(PunchChoice.ENTRY) }
-        )
-        QuickPunchFab(
-            label = "Saída",
-            isSuggested = suggestedPunch == PunchChoice.EXIT,
-            onClick = { onCameraPunch(PunchChoice.EXIT) }
+        ExtendedFloatingActionButton(
+            onClick = { onCameraPunch(suggestedPunch) },
+            icon = { Icon(Icons.Outlined.CameraAlt, contentDescription = null) },
+            text = {
+                Text(
+                    text = if (suggestedPunch == PunchChoice.EXIT) "Registrar saída" else "Registrar ponto",
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            shape = RoundedCornerShape(18.dp)
         )
         Surface(
             onClick = onOpenOptions,
@@ -1691,30 +1712,6 @@ private fun QuickPunchFabBar(
             }
         }
     }
-}
-
-@Composable
-private fun QuickPunchFab(
-    label: String,
-    isSuggested: Boolean,
-    onClick: () -> Unit
-) {
-    ExtendedFloatingActionButton(
-        onClick = onClick,
-        icon = { Icon(Icons.Outlined.CameraAlt, contentDescription = null) },
-        text = { Text(label, maxLines = 1, softWrap = false) },
-        containerColor = if (isSuggested) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        },
-        contentColor = if (isSuggested) {
-            MaterialTheme.colorScheme.onPrimary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-        shape = RoundedCornerShape(18.dp)
-    )
 }
 
 @Composable
