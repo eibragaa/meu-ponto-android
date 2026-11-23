@@ -1,4 +1,4 @@
-name: Beta (playBeta + githubBeta)
+name: Beta (githubBeta com auto-updater)
 
 on:
   push:
@@ -49,11 +49,11 @@ jobs:
           echo "beta_version_name=${BETA_VERSION_NAME}" >> "$GITHUB_OUTPUT"
           echo "tag=beta-v${NEXT}" >> "$GITHUB_OUTPUT"
 
-      - name: Run unit tests (beta flavors)
-        run: ./gradlew :app:testPlayBetaDebugUnitTest :app:testGithubBetaDebugUnitTest --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
+      - name: Run unit tests
+        run: ./gradlew :app:testGithubBetaDebugUnitTest --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
 
-      - name: Run lint (beta flavors)
-        run: ./gradlew :app:lintPlayBetaDebug :app:lintGithubBetaDebug :app:lintPlayBetaRelease :app:lintGithubBetaRelease --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
+      - name: Run lint
+        run: ./gradlew :app:lintGithubBetaDebug :app:lintGithubBetaRelease --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
 
       - name: Prepare release keystore
         if: env.ANDROID_KEYSTORE_BASE64 != ''
@@ -62,21 +62,20 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/meu-ponto-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/meu-ponto-release.jks" >> "$GITHUB_ENV"
 
-      - name: Build beta APKs
-        run: ./gradlew :app:assemblePlayBetaRelease :app:assembleGithubBetaRelease --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
+      - name: Build beta APK
+        run: ./gradlew :app:assembleGithubBetaRelease --no-daemon -PbetaVersionCodeOverride=${{ steps.beta_version.outputs.beta_version_code }} -PbetaVersionNameOverride=${{ steps.beta_version.outputs.beta_version_name }}
 
-      - name: Rename beta APKs
+      - name: Rename beta APK
         shell: bash
         run: |
           cp app/build/outputs/apk/githubBeta/release/app-githubBeta-release.apk "app/build/outputs/apk/githubBeta/release/Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk" || true
-          cp app/build/outputs/apk/playBeta/release/app-playBeta-release.apk "app/build/outputs/apk/playBeta/release/Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-play.apk" || true
 
-      - name: Upload beta APK artifacts
+      - name: Upload beta APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: meu-ponto-beta-apk
           path: |
-            app/build/outputs/apk/*/release/Meu-Ponto-Beta-*.apk
+            app/build/outputs/apk/githubBeta/release/Meu-Ponto-Beta-*.apk
 
       - name: Publish beta release (pre-release, nao vira latest)
         uses: softprops/action-gh-release@v2
@@ -87,11 +86,10 @@ jobs:
           body: |
             ## Novo beta disponível
 
-            **Meu Ponto Beta • v${{ steps.beta_version.outputs.beta_version_name }} (build ${{ steps.beta_version.outputs.beta_version_code }})** — versão de teste com as últimas melhorias.
+            **Meu Ponto Beta • v${{ steps.beta_version.outputs.beta_version_name }} (build ${{ steps.beta_version.outputs.beta_version_code }})** — versão de teste com auto-atualizador integrado.
 
-            ## Qual arquivo baixar?
-            - **`Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk`** (RECOMENDADO): versão do canal beta com auto-atualizador embutido.
-            - `Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-play.apk`: versão sem auto-updater (padrão Play Store).
+            ## Arquivo para download
+            - **`Meu-Ponto-Beta-${{ steps.beta_version.outputs.beta_version_name }}-updater.apk`**
 
             ## Instalação e Convivência
             - Convive perfeitamente com o app oficial na tela inicial (`br.com.jean.meuponto.beta`).
@@ -99,4 +97,3 @@ jobs:
           prerelease: true
           files: |
             app/build/outputs/apk/githubBeta/release/Meu-Ponto-Beta-*-updater.apk
-            app/build/outputs/apk/playBeta/release/Meu-Ponto-Beta-*-play.apk
