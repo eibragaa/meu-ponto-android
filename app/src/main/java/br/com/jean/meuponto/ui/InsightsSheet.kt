@@ -37,6 +37,8 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
@@ -259,6 +261,7 @@ fun InsightsSheet(
     onSelectDay: (String) -> Unit = {},
     expectedDailyMinutes: Int? = null,
     onOpenReminder: (() -> Unit)? = null,
+    onExportTimesheet: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val reduceMotion = remember { !ValueAnimator.areAnimatorsEnabled() }
@@ -373,6 +376,27 @@ fun InsightsSheet(
                     title = "Saldo contra jornada esperada",
                     value = formatSignedMinutes(balance),
                     detail = if (balance >= 0) "Você está acima da jornada esperada." else "Horas a compensar no período."
+                )
+            }
+
+            if (onExportTimesheet != null) {
+                Button(
+                    onClick = onExportTimesheet,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(
+                        Icons.Outlined.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Espelho de Ponto (PDF)")
+                }
+                Text(
+                    "Tabela A4 com data, batidas, total do dia e campo de assinatura.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 

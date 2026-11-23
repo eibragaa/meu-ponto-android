@@ -56,12 +56,14 @@ fun TodayCard(
 
     val cardBg = when (status.state) {
         TodayShiftState.IN_PROGRESS -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        TodayShiftState.ON_BREAK -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.40f)
         TodayShiftState.COMPLETED -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         TodayShiftState.NO_RECORD -> MaterialTheme.colorScheme.surface
     }
 
     val borderColor = when (status.state) {
         TodayShiftState.IN_PROGRESS -> MaterialTheme.colorScheme.primary
+        TodayShiftState.ON_BREAK -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
         TodayShiftState.COMPLETED -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
         TodayShiftState.NO_RECORD -> MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
     }
@@ -120,6 +122,26 @@ fun TodayCard(
                                 )
                                 Text(
                                     text = "EM TURNO",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    TodayShiftState.ON_BREAK -> {
+                        Surface(
+                            shape = RoundedCornerShape(100.dp),
+                            color = MaterialTheme.colorScheme.tertiary,
+                            contentColor = MaterialTheme.colorScheme.onTertiary
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Outlined.Schedule, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Text(
+                                    text = "EM INTERVALO",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -214,6 +236,69 @@ fun TodayCard(
                     }
                 }
 
+                TodayShiftState.ON_BREAK -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "Saída para almoço às",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = status.breakStartTime.orEmpty(),
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                            if (status.suggestedReturnTime != null) {
+                                Text(
+                                    text = "Volta sugerida (1h): ${status.suggestedReturnTime}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (status.estimatedExitTime != null) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "Previsão final (8h)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "~${status.estimatedExitTime}",
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                val workedHours = status.minutesWorked / 60
+                                val workedMins = status.minutesWorked % 60
+                                Text(
+                                    text = "Trabalhado: ${workedHours}h ${workedMins}m",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = { onRegisterPunch(PunchChoice.ENTRY) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                    ) {
+                        Icon(Icons.Outlined.AccessTime, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Bater Volta do Almoço", fontWeight = FontWeight.Bold)
+                    }
+                }
+
                 TodayShiftState.COMPLETED -> {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -278,7 +363,7 @@ fun TodayCard(
                     ) {
                         Icon(Icons.Outlined.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Bater Entrada", fontWeight = FontWeight.Bold)
+                        Text("Iniciar Jornada", fontWeight = FontWeight.Bold)
                     }
                 }
             }

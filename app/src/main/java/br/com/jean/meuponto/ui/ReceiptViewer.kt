@@ -152,19 +152,30 @@ fun ReceiptViewer(
                             contentScale = ContentScale.Fit
                         )
                     } else {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(24.dp)
+                        ) {
                             Icon(
-                                Icons.Outlined.FolderOpen,
+                                if (receipt.imagePath.isBlank()) Icons.Outlined.Schedule else Icons.Outlined.FolderOpen,
                                 contentDescription = null,
-                                tint = Color.White.copy(alpha = .7f),
-                                modifier = Modifier.size(42.dp)
+                                tint = Color.White.copy(alpha = .8f),
+                                modifier = Modifier.size(46.dp)
                             )
-                            Spacer(Modifier.height(8.dp))
                             Text(
-                                "Imagem indisponível",
-                                color = Color.White.copy(alpha = .7f),
-                                style = MaterialTheme.typography.bodyMedium
+                                if (receipt.imagePath.isBlank()) "Registro manual sem foto" else "Imagem indisponível",
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
                             )
+                            if (receipt.imagePath.isBlank()) {
+                                Text(
+                                    "Comprovante lançado diretamente no aplicativo.",
+                                    color = Color.White.copy(alpha = .7f),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         }
                     }
                 }

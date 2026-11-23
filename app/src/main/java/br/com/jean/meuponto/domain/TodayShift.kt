@@ -10,7 +10,8 @@ import java.time.format.DateTimeFormatter
 enum class TodayShiftState {
     NO_RECORD,       // Nenhuma batida registrada hoje
     IN_PROGRESS,     // Em turno agora (entrada aberta)
-    COMPLETED        // Jornada finalizada (todas as batidas fechadas)
+    ON_BREAK,        // Em intervalo/almoço (saída intermediária registrada, meta diária ainda não cumprida)
+    COMPLETED        // Jornada finalizada (todas as batidas fechadas e meta cumprida ou fim do dia)
 }
 
 data class TodayShiftStatus(
@@ -19,8 +20,20 @@ data class TodayShiftStatus(
     val exitTime: String? = null,
     val minutesWorked: Int = 0,
     val estimatedExitTime: String? = null,
-    val rawEntryTime: LocalTime? = null
+    val rawEntryTime: LocalTime? = null,
+    val breakStartTime: String? = null,
+    val suggestedReturnTime: String? = null,
+    val remainingMinutesNeeded: Int = 0
 )
+
+/** Janela máxima (em minutos) após a última saída para considerar o usuário em intervalo (4 horas). */
+private const val MAX_BREAK_WINDOW_MINUTES = 240L
+
+/** Intervalo padrão de descanso/almoço assumido pela legislação (60 minutos). */
+private const val DEFAULT_BREAK_MINUTES = 60L
+
+/** Margem de tolerância em minutos para considerar a jornada do dia cumprida (15 minutos). */
+private const val SHIFT_COMPLETION_TOLERANCE_MINUTES = 15
 
 fun calculateTodayShiftStatus(
     receipts: List<Receipt>,
@@ -70,7 +83,8 @@ fun calculateTodayShiftStatus(
             entryTime = openShift.entry.time.format(clockFmt),
             minutesWorked = completedMinutesToday + elapsedMinutes,
             estimatedExitTime = estimatedExit.format(clockFmt),
-            rawEntryTime = openShift.entry.time
+            rawEntryTime = openShift.entry.time,
+            remainingMinutesNeeded = remainingMinutesNeeded
         )
     }
 
@@ -81,12 +95,40 @@ fun calculateTodayShiftStatus(
         val lastExit = todayCompletedShifts.mapNotNull { it.exit?.time }.maxOrNull()
         val totalMinutes = todayCompletedShifts.sumOf { it.minutes }
 
+        // Se cumpriu a meta do dia ou se passou muito tempo da última saída (mais de 4h), considera finalizado
+        val lastExitDate = todayDate
+        val lastExitAt = lastExit?.let { lastExitDate.atTime(it) }
+        val minutesSinceLastExit = lastExitAt?.let { Duration.between(it, now).toMinutes() } ?: Long.MAX_VALUE
+
+        val isGoalMet = totalMinutes >= (expectedDailyMinutes - SHIFT_COMPLETION_TOLERANCE_MINUTES)
+        val isLongAfterExit = minutesSinceLastExit > MAX_BREAK_WINDOW_MINUTES
+
+        if (!isGoalMet && !isLongAfterExit && lastExit != null) {
+            // Em intervalo/almoço: o usuário saiu, mas ainda faltam horas para a meta do dia
+            val remainingNeeded = (expectedDailyMinutes - totalMinutes).coerceAtLeast(0)
+            val suggestedReturn = lastExit.plusMinutes(DEFAULT_BREAK_MINUTES)
+            val estimatedExit = suggestedReturn.plusMinutes(remainingNeeded.toLong())
+
+            return TodayShiftStatus(
+                state = TodayShiftState.ON_BREAK,
+                entryTime = firstEntry?.format(clockFmt),
+                exitTime = lastExit.format(clockFmt),
+                minutesWorked = totalMinutes,
+                estimatedExitTime = estimatedExit.format(clockFmt),
+                rawEntryTime = firstEntry,
+                breakStartTime = lastExit.format(clockFmt),
+                suggestedReturnTime = suggestedReturn.format(clockFmt),
+                remainingMinutesNeeded = remainingNeeded
+            )
+        }
+
         return TodayShiftStatus(
             state = TodayShiftState.COMPLETED,
             entryTime = firstEntry?.format(clockFmt),
             exitTime = lastExit?.format(clockFmt),
             minutesWorked = totalMinutes,
-            rawEntryTime = firstEntry
+            rawEntryTime = firstEntry,
+            remainingMinutesNeeded = 0
         )
     }
 
