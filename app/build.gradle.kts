@@ -33,8 +33,8 @@ android {
         applicationId = "br.com.jean.meuponto$localTestSuffix"
         minSdk = 26
         targetSdk = 36
-        versionCode = versionCodeOverride ?: 19
-        versionName = versionNameOverride ?: "0.8.1"
+        versionCode = versionCodeOverride ?: 21
+        versionName = versionNameOverride ?: "0.9.0"
     }
     buildFeatures { compose = true; buildConfig = true }
     flavorDimensions += "distribution"
@@ -52,22 +52,16 @@ android {
         create("playBeta") {
             dimension = "distribution"
             applicationIdSuffix = ".beta$localTestSuffix"
-            versionNameSuffix = "-beta"
             versionCode = betaVersionCodeOverride
-            if (betaVersionNameOverride != null) {
-                versionName = betaVersionNameOverride
-            }
+            versionName = betaVersionNameOverride ?: "${defaultConfig.versionName}-beta"
             buildConfigField("boolean", "UPDATER_ENABLED", "false")
             buildConfigField("boolean", "IS_BETA_CHANNEL", "true")
         }
         create("githubBeta") {
             dimension = "distribution"
             applicationIdSuffix = ".beta$localTestSuffix"
-            versionNameSuffix = "-beta"
             versionCode = betaVersionCodeOverride
-            if (betaVersionNameOverride != null) {
-                versionName = betaVersionNameOverride
-            }
+            versionName = betaVersionNameOverride ?: "${defaultConfig.versionName}-beta"
             buildConfigField("boolean", "UPDATER_ENABLED", "true")
             buildConfigField("boolean", "IS_BETA_CHANNEL", "true")
         }
