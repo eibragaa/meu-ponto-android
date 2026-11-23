@@ -10,10 +10,10 @@ internal enum class CheckTrigger {
 /**
  * Intervalo mínimo entre verificações automáticas no foreground.
  *
- * 30 min equilibra o aviso "ao abrir de novo" com o limite de 60 requisições/hora da API pública do
- * GitHub; a verificação manual ignora esse intervalo.
+ * 24 horas (uma vez ao dia) evita consultas repetidas ao GitHub enquanto o app está aberto ou em
+ * segundo plano; a verificação manual ou ao entrar no app (ColdStart) segue ativa.
  */
-internal const val AUTO_CHECK_INTERVAL_MS = 30 * 60 * 1000L
+internal const val AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
 /**
  * Decide se a consulta ao GitHub deve acontecer.

@@ -343,7 +343,7 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
     }
 
     // ON_START sem dependência nova: o lifecycle do ComponentActivity avisa quando o app volta ao
-    // foreground. O coordenador aplica o throttle de 30 min internamente.
+    // foreground. O coordenador aplica o throttle de 24h (1x ao dia) internamente.
     val lifecycleOwner = context as? ComponentActivity
     DisposableEffect(lifecycleOwner, updateCoordinator) {
         val coordinator = updateCoordinator
