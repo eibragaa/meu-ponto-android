@@ -78,6 +78,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -611,7 +612,14 @@ private fun MeuPontoApp(isDarkTheme: Boolean, onToggleTheme: () -> Unit) {
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(bottom = 88.dp)
+            )
+        },
         floatingActionButton = {
             if (allReceipts.isNotEmpty()) {
                 QuickPunchFabBar(
@@ -1101,15 +1109,15 @@ private fun SummaryCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (isProcessing) "Organizando seu comprovante" else if (total == 0) "Seu arquivo começa aqui" else "Resumo do período",
+                            if (total == 0) "Seu arquivo começa aqui" else "Resumo do período",
                             color = heroText,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            if (isProcessing) "Lendo data e horário com OCR local…" else periodLabel,
-                            color = heroMuted,
+                            if (isProcessing) "Organizando comprovante (OCR local)…" else periodLabel,
+                            color = if (isProcessing) Coral else heroMuted,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -2074,9 +2082,16 @@ private fun EditReceiptSheet(
         occurrence = occurrence?.takeIf { it in next.occurrences }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.background
+    ) {
         Column(
             Modifier
+                .fillMaxWidth()
                 .imePadding()
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
@@ -2128,12 +2143,26 @@ private fun EditReceiptSheet(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
             )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(PunchChoice.entries) { option ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(PunchChoice.BOTH, PunchChoice.ENTRY).forEach { option ->
                     FilterChip(
                         selected = selectedChoice == option,
                         onClick = { pick(option) },
-                        label = { Text(option.label) },
+                        label = { Text(option.label, maxLines = 1) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = organizeChipColors(),
+                        border = organizeChipBorder(selectedChoice == option)
+                    )
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(PunchChoice.EXIT, PunchChoice.NONE).forEach { option ->
+                    FilterChip(
+                        selected = selectedChoice == option,
+                        onClick = { pick(option) },
+                        label = { Text(option.label, maxLines = 1) },
+                        modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                         colors = organizeChipColors(),
                         border = organizeChipBorder(selectedChoice == option)

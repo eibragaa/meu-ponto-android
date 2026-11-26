@@ -106,5 +106,22 @@ class TodayShiftTest {
         assertEquals(TodayShiftState.IN_PROGRESS, status.state)
         assertEquals("23:50", status.entryTime)
         assertEquals(250, status.minutesWorked) // 250 min
+        org.junit.Assert.assertTrue(status.isNightShift)
+    }
+
+    @Test
+    fun `turno noturno com entrada as 22h41 de ontem e visualizado pela manha sugere saida`() {
+        val yesterdayStr = "22/11/2026"
+        val receipts = listOf(
+            receipt(1, yesterdayStr, entry = "22:41")
+        )
+        val now = LocalDateTime.of(today, LocalTime.of(8, 18)) // 9h37 = 577 min decorridos
+        val status = calculateTodayShiftStatus(receipts, now, expectedDailyMinutes = 480)
+
+        assertEquals(TodayShiftState.IN_PROGRESS, status.state)
+        assertEquals("22:41", status.entryTime)
+        assertEquals(577, status.minutesWorked)
+        org.junit.Assert.assertTrue(status.isNightShift)
+        assertEquals(PunchChoice.EXIT, suggestedNextPunch(receipts, now))
     }
 }

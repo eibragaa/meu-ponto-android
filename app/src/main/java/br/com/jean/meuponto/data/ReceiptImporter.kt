@@ -83,7 +83,7 @@ internal suspend fun recognizeAndSave(
         resolved.workDate.isBlank() ->
             "Comprovante salvo — revise a data."
         resolved.needsReview && resolved.usedTodayFallback ->
-            "Comprovante salvo com a data de hoje — diga se o horário é entrada ou saída."
+            "Comprovante salvo com a data de hoje — confirme a data e o tipo na revisão."
         resolved.needsReview ->
             "Comprovante salvo — diga se o horário é entrada ou saída."
         resolved.usedTodayFallback ->
