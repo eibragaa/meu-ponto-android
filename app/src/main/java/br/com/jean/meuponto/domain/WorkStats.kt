@@ -106,12 +106,21 @@ object WorkStatsCalculator {
         DateTimeFormatter.ofPattern("dd/MM/uuuu").withResolverStyle(ResolverStyle.STRICT)
     private val timeFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("HH:mm").withResolverStyle(ResolverStyle.STRICT)
-    private val datePattern = Regex("\\b(\\d{2})[./-](\\d{2})[./-](\\d{4})\\b")
+    private val explicitDatePattern =
+        Regex("(?i)\\bDATA[:.\\s]*(\\d{2})[./\\s|-]+(\\d{2})[./\\s|-]+(\\d{2}|\\d{4})\\b")
+    private val generalDatePattern =
+        Regex("\\b(\\d{2})[./-](\\d{2})[./-](\\d{2}|\\d{4})\\b")
     private val timePattern = Regex("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b")
 
     fun normalizeWorkDate(value: String): String? {
-        val match = datePattern.find(value) ?: return null
-        val normalized = "${match.groupValues[1]}/${match.groupValues[2]}/${match.groupValues[3]}"
+        val match = explicitDatePattern.find(value) ?: generalDatePattern.find(value) ?: return null
+        val day = match.groupValues[1]
+        val month = match.groupValues[2]
+        var year = match.groupValues[3]
+        if (year.length == 2) {
+            year = "20$year"
+        }
+        val normalized = "$day/$month/$year"
         return normalized.takeIf { parseWorkDate(it) != null }
     }
 
@@ -227,7 +236,8 @@ object WorkStatsCalculator {
     fun resolveOcrReceipt(
         recognizedText: String,
         preferredPunch: PunchChoice? = null,
-        today: LocalDate = LocalDate.now()
+        today: LocalDate = LocalDate.now(),
+        nowTime: LocalTime = LocalTime.now()
     ): ResolvedOcrReceipt {
         val recognizedDate = normalizeWorkDate(recognizedText)
         val times = timePattern.findAll(recognizedText)
@@ -247,7 +257,21 @@ object WorkStatsCalculator {
         val effectiveDate = recognizedDate ?: if (usedTodayFallback) today.format(dateFormatter) else ""
         val hasTypedPunch = times.size >= 2 ||
             (times.size == 1 && (preferredPunch == PunchChoice.ENTRY || preferredPunch == PunchChoice.EXIT))
-        val needsReview = effectiveDate.isBlank() || !hasTypedPunch
+
+        // Se a data dependeu do fallback de hoje mas o horário lido destoa da jornada em curso
+        // (ex.: batida noturna >= 20h lida durante a manhã, ou defasagem superior a 4h),
+        // exige revisão para não persistir data errada no turno noturno.
+        val fallbackNeedsConfirmation = usedTodayFallback && times.isNotEmpty() && run {
+            val punchTime = parseClockTime(entry ?: exit ?: times[0])
+            if (punchTime == null) {
+                true
+            } else {
+                val diffHours = Math.abs(java.time.Duration.between(punchTime, nowTime).toHours())
+                diffHours >= 4 || (punchTime.hour >= 20 && nowTime.hour < 12)
+            }
+        }
+
+        val needsReview = effectiveDate.isBlank() || !hasTypedPunch || fallbackNeedsConfirmation
         return ResolvedOcrReceipt(
             workDate = effectiveDate,
             workTime = punches.workTime,

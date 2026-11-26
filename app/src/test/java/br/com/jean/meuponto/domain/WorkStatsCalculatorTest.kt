@@ -592,4 +592,50 @@ class WorkStatsCalculatorTest {
         assertTrue(resolved.needsReview)
         assertFalse(resolved.usedTodayFallback)
     }
+
+    @Test
+    fun `ocr com data com ruidos termicos e prefixo DATA extrai data correta`() {
+        val text = "NSR: 000199170 DATA: 25/11/2026 HORA: 22:41 AD: 05"
+        val resolved = WorkStatsCalculator.resolveOcrReceipt(
+            recognizedText = text,
+            preferredPunch = PunchChoice.ENTRY,
+            today = LocalDate.of(2026, 11, 26)
+        )
+
+        assertEquals("25/11/2026", resolved.workDate)
+        assertEquals("22:41", resolved.entryTime)
+        assertFalse(resolved.needsReview)
+        assertFalse(resolved.usedTodayFallback)
+    }
+
+    @Test
+    fun `ocr com ano curto de 2 digitos normaliza para 4 digitos`() {
+        val text = "COMPROVANTE DATA 25/11/26 22:41"
+        val resolved = WorkStatsCalculator.resolveOcrReceipt(
+            recognizedText = text,
+            preferredPunch = PunchChoice.ENTRY,
+            today = LocalDate.of(2026, 11, 26)
+        )
+
+        assertEquals("25/11/2026", resolved.workDate)
+        assertEquals("22:41", resolved.entryTime)
+        assertFalse(resolved.needsReview)
+        assertFalse(resolved.usedTodayFallback)
+    }
+
+    @Test
+    fun `ocr sem data e horario noturno lido pela manha exige revisao para nao assumir hoje silenciosamente`() {
+        val text = "REGISTRO HORA 22:41"
+        val resolved = WorkStatsCalculator.resolveOcrReceipt(
+            recognizedText = text,
+            preferredPunch = PunchChoice.ENTRY,
+            today = LocalDate.of(2026, 11, 26),
+            nowTime = java.time.LocalTime.of(8, 18)
+        )
+
+        assertEquals("26/11/2026", resolved.workDate)
+        assertEquals("22:41", resolved.entryTime)
+        assertTrue(resolved.needsReview)
+        assertTrue(resolved.usedTodayFallback)
+    }
 }

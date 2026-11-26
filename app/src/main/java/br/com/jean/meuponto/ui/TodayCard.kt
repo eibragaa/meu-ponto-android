@@ -121,7 +121,7 @@ fun TodayCard(
                                         .background(Color.White)
                                 )
                                 Text(
-                                    text = "EM TURNO",
+                                    text = if (status.isNightShift) "TURNO NOTURNO" else "EM TURNO",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -195,7 +195,7 @@ fun TodayCard(
                     ) {
                         Column {
                             Text(
-                                text = "Entrada registrada às",
+                                text = if (status.isNightShift) "Entrada ontem às" else "Entrada registrada às",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -232,7 +232,10 @@ fun TodayCard(
                     ) {
                         Icon(Icons.Outlined.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Bater Saída", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (status.isNightShift) "Bater Saída do Turno Noturno" else "Bater Saída",
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 

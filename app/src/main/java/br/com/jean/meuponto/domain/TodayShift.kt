@@ -23,7 +23,8 @@ data class TodayShiftStatus(
     val rawEntryTime: LocalTime? = null,
     val breakStartTime: String? = null,
     val suggestedReturnTime: String? = null,
-    val remainingMinutesNeeded: Int = 0
+    val remainingMinutesNeeded: Int = 0,
+    val isNightShift: Boolean = false
 )
 
 /** Janela máxima (em minutos) após a última saída para considerar o usuário em intervalo (4 horas). */
@@ -69,6 +70,7 @@ fun calculateTodayShiftStatus(
         val entryDate = WorkStatsCalculator.parseWorkDate(openShift.entry!!.receipt.workDate) ?: todayDate
         val entryAt = entryDate.atTime(openShift.entry.time)
         val elapsedMinutes = Duration.between(entryAt, now).toMinutes().coerceAtLeast(0).toInt()
+        val isNightShift = entryDate.isBefore(todayDate)
 
         // Soma minutos de turnos já concluídos hoje (ex: turno da manhã)
         val completedMinutesToday = pairing.shifts
@@ -84,7 +86,8 @@ fun calculateTodayShiftStatus(
             minutesWorked = completedMinutesToday + elapsedMinutes,
             estimatedExitTime = estimatedExit.format(clockFmt),
             rawEntryTime = openShift.entry.time,
-            remainingMinutesNeeded = remainingMinutesNeeded
+            remainingMinutesNeeded = remainingMinutesNeeded,
+            isNightShift = isNightShift
         )
     }
 
