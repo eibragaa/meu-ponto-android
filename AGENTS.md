@@ -24,6 +24,11 @@ de escrever código. Se algo aqui divergir daquele documento, o documento vence.
    (backup/restore, instalação de APK).
 10. Se não foi possível compilar/testar no ambiente, diga isso no relatório. Nunca afirme que
     “compila” sem ter compilado.
+11. **Vibe Coding com Rigor:** Siga a metodologia em [`docs/vibe-coding-methodology.md`](docs/vibe-coding-methodology.md):
+    - **Finish line no dispositivo:** Tarefa de UI/UX só conclui após teste no celular (`scripts/deploy_dogfood.sh`).
+    - **Design First fora do código:** Não itere telas em Compose; apresente 3 direções visuais e antes/depois no padrão [`docs/templates/ui-direction-template.md`](docs/templates/ui-direction-template.md) antes de codar.
+    - **Linter de Arquitetura:** Rode `python3 scripts/check_architecture.py` antes de cada commit.
+    - **Client Agent:** Valide com o sandbox externo (`python3 scripts/client_agent_smoke_test.py`).
 
 ## Comandos
 
@@ -33,6 +38,9 @@ de escrever código. Se algo aqui divergir daquele documento, o documento vence.
 ./gradlew :app:assemblePlayDebug                                               # APK debug
 ./gradlew :app:assembleGithubRelease                                           # APK release (keystore via env)
 ./gradlew :app:bundlePlayRelease                                               # AAB para a Play
+python3 scripts/check_architecture.py                                          # auditoria de arquitetura
+./scripts/deploy_dogfood.sh                                                    # build + deploy no S25 Ultra via ADB
+python3 scripts/client_agent_smoke_test.py                                     # teste funcional client agent
 ```
 
 Requisitos: JDK 17 e Android SDK 36 (`local.properties` não vai para o git).
